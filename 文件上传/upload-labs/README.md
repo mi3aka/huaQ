@@ -642,17 +642,27 @@ if (isset($_POST['submit'])){
 
 `imagecreatefromxxx($target_path)`对图片进行了二次渲染,目标是图片在进行二次渲染后,仍然能够保留webshell
 
+[upload-labs之pass 16详细分析](https://xz.aliyun.com/t/2657)
 
+### GIF
 
+GIF来源于[GIF-wikipedia](https://en.wikipedia.org/wiki/GIF)
 
+`1.gif`为原图片,`2.gif`为二次渲染之后的图片,可以看到webshell仍然可用
 
+![](Pass-16-gif.png)
 
+### PNG
 
+将webshell置于PLTE块中,然后重新计算CRC(010Editor可以自动计算)
 
+`source.png`为原图片,`1.png`为插入webshell后重新计算CRC的图片,`2.png`为二次渲染之后的图片
 
+![](Pass-16-png.png)
 
+### JPG
 
-
+[jpg_payload](https://github.com/BlackFan/jpg_payload/blob/master/jpg_payload.php)
 
 ## Pass-17
 
