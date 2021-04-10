@@ -1,6 +1,6 @@
 ## Brute Force 暴力破解
 
-### low
+### Low
 
 ```php
 <?php
@@ -158,13 +158,13 @@ generateSessionToken();
 
 ```html
 <form action="#" method="GET">
-		Username:<br />
-		<input type="text" name="username"><br />
-		Password:<br />
-		<input type="password" AUTOCOMPLETE="off" name="password"><br />
-		<br />
-		<input type="submit" value="Login" name="Login">
-		<input type='hidden' name='user_token' value='b2a0a63f2706d8d8279ad9518bd9d026' />
+	Username:<br />
+	<input type="text" name="username"><br />
+	Password:<br />
+	<input type="password" AUTOCOMPLETE="off" name="password"><br />
+	<br />
+	<input type="submit" value="Login" name="Login">
+	<input type='hidden' name='user_token' value='b2a0a63f2706d8d8279ad9518bd9d026' />
 </form>
 ```
 
@@ -317,3 +317,353 @@ generateSessionToken();
 ```
 
 主要增加了失败次数达到3则锁定账户15分钟的设定,使得对用户和密码的爆破近乎不可能
+
+## Command Injection 命令注入
+
+### Low
+
+```php
+
+<?php
+
+if( isset( $_POST[ 'Submit' ]  ) ) {
+    // Get input
+    $target = $_REQUEST[ 'ip' ];
+
+    // Determine OS and execute the ping command.
+    if( stristr( php_uname( 's' ), 'Windows NT' ) ) {
+        // Windows
+        $cmd = shell_exec( 'ping  ' . $target );
+    }
+    else {
+        // *nix
+        $cmd = shell_exec( 'ping  -c 4 ' . $target );
+    }
+
+    // Feedback for the end user
+    echo "<pre>{$cmd}</pre>";
+}
+
+?>
+```
+
+`;cat /etc/passwd`即可直接读取
+
+### Medium
+
+```php
+
+<?php
+
+if( isset( $_POST[ 'Submit' ]  ) ) {
+    // Get input
+    $target = $_REQUEST[ 'ip' ];
+
+    // Set blacklist
+    $substitutions = array(
+        '&&' => '',
+        ';'  => '',
+    );
+
+    // Remove any of the charactars in the array (blacklist).
+    $target = str_replace( array_keys( $substitutions ), $substitutions, $target );
+
+    // Determine OS and execute the ping command.
+    if( stristr( php_uname( 's' ), 'Windows NT' ) ) {
+        // Windows
+        $cmd = shell_exec( 'ping  ' . $target );
+    }
+    else {
+        // *nix
+        $cmd = shell_exec( 'ping  -c 4 ' . $target );
+    }
+
+    // Feedback for the end user
+    echo "<pre>{$cmd}</pre>";
+}
+
+?>
+```
+
+过滤了`&&`和`;`,可以用`|`代替`|cat /etc/passwd`
+
+### High
+
+```php
+
+<?php
+
+if( isset( $_POST[ 'Submit' ]  ) ) {
+    // Get input
+    $target = trim($_REQUEST[ 'ip' ]);
+
+    // Set blacklist
+    $substitutions = array(
+        '&'  => '',
+        ';'  => '',
+        '| ' => '',
+        '-'  => '',
+        '$'  => '',
+        '('  => '',
+        ')'  => '',
+        '`'  => '',
+        '||' => '',
+    );
+
+    // Remove any of the charactars in the array (blacklist).
+    $target = str_replace( array_keys( $substitutions ), $substitutions, $target );
+
+    // Determine OS and execute the ping command.
+    if( stristr( php_uname( 's' ), 'Windows NT' ) ) {
+        // Windows
+        $cmd = shell_exec( 'ping  ' . $target );
+    }
+    else {
+        // *nix
+        $cmd = shell_exec( 'ping  -c 4 ' . $target );
+    }
+
+    // Feedback for the end user
+    echo "<pre>{$cmd}</pre>";
+}
+
+?>
+```
+
+过滤的是`| `而不是`|`因此`|cat /etc/passwd`仍然有效
+
+### Impossible
+
+```php
+
+<?php
+
+if( isset( $_POST[ 'Submit' ]  ) ) {
+    // Check Anti-CSRF token
+    checkToken( $_REQUEST[ 'user_token' ], $_SESSION[ 'session_token' ], 'index.php' );
+
+    // Get input
+    $target = $_REQUEST[ 'ip' ];
+    $target = stripslashes( $target );//删除反斜杠
+
+    // Split the IP into 4 octects
+    $octet = explode( ".", $target );//根据.将字符串打散成数组
+
+    // Check IF each octet is an integer
+    if( ( is_numeric( $octet[0] ) ) && ( is_numeric( $octet[1] ) ) && ( is_numeric( $octet[2] ) ) && ( is_numeric( $octet[3] ) ) && ( sizeof( $octet ) == 4 ) ) {
+        // If all 4 octets are int's put the IP back together.
+        $target = $octet[0] . '.' . $octet[1] . '.' . $octet[2] . '.' . $octet[3];
+
+        // Determine OS and execute the ping command.
+        if( stristr( php_uname( 's' ), 'Windows NT' ) ) {
+            // Windows
+            $cmd = shell_exec( 'ping  ' . $target );
+        }
+        else {
+            // *nix
+            $cmd = shell_exec( 'ping  -c 4 ' . $target );
+        }
+
+        // Feedback for the end user
+        echo "<pre>{$cmd}</pre>";
+    }
+    else {
+        // Ops. Let the user name theres a mistake
+        echo '<pre>ERROR: You have entered an invalid IP.</pre>';
+    }
+}
+
+// Generate Anti-CSRF token
+generateSessionToken();
+
+?>
+```
+
+只有输入`num.num.num.num`的格式才能被执行,不存在漏洞
+
+## CSRF 跨站请求伪造
+
+## File Inclusion 文件包含
+
+## File Upload 文件上传
+
+### Low
+
+```php
+
+<?php
+
+if( isset( $_POST[ 'Upload' ] ) ) {
+    // Where are we going to be writing to?
+    $target_path  = DVWA_WEB_PAGE_TO_ROOT . "hackable/uploads/";
+    $target_path .= basename( $_FILES[ 'uploaded' ][ 'name' ] );
+
+    // Can we move the file to the upload folder?
+    if( !move_uploaded_file( $_FILES[ 'uploaded' ][ 'tmp_name' ], $target_path ) ) {
+        // No
+        echo '<pre>Your image was not uploaded.</pre>';
+    }
+    else {
+        // Yes!
+        echo "<pre>{$target_path} succesfully uploaded!</pre>";
+    }
+}
+
+?>
+```
+
+无检测机制,可直接getshell
+
+## Medium
+
+```php
+
+<?php
+
+if( isset( $_POST[ 'Upload' ] ) ) {
+    // Where are we going to be writing to?
+    $target_path  = DVWA_WEB_PAGE_TO_ROOT . "hackable/uploads/";
+    $target_path .= basename( $_FILES[ 'uploaded' ][ 'name' ] );
+
+    // File information
+    $uploaded_name = $_FILES[ 'uploaded' ][ 'name' ];
+    $uploaded_type = $_FILES[ 'uploaded' ][ 'type' ];
+    $uploaded_size = $_FILES[ 'uploaded' ][ 'size' ];
+
+    // Is it an image?
+    if( ( $uploaded_type == "image/jpeg" || $uploaded_type == "image/png" ) &&
+        ( $uploaded_size < 100000 ) ) {
+
+        // Can we move the file to the upload folder?
+        if( !move_uploaded_file( $_FILES[ 'uploaded' ][ 'tmp_name' ], $target_path ) ) {
+            // No
+            echo '<pre>Your image was not uploaded.</pre>';
+        }
+        else {
+            // Yes!
+            echo "<pre>{$target_path} succesfully uploaded!</pre>";
+        }
+    }
+    else {
+        // Invalid file
+        echo '<pre>Your image was not uploaded. We can only accept JPEG or PNG images.</pre>';
+    }
+}
+
+?>
+```
+
+MIME限制,修改数据包中的MIME即可,`Content-Type: application/x-php`更改为`Content-Type: image/jpeg`
+
+### High
+
+```php
+<?php
+
+if( isset( $_POST[ 'Upload' ] ) ) {
+    // Where are we going to be writing to?
+    $target_path  = DVWA_WEB_PAGE_TO_ROOT . "hackable/uploads/";
+    $target_path .= basename( $_FILES[ 'uploaded' ][ 'name' ] );
+
+    // File information
+    $uploaded_name = $_FILES[ 'uploaded' ][ 'name' ];
+    $uploaded_ext  = substr( $uploaded_name, strrpos( $uploaded_name, '.' ) + 1);//获取实际拓展名
+    $uploaded_size = $_FILES[ 'uploaded' ][ 'size' ];
+    $uploaded_tmp  = $_FILES[ 'uploaded' ][ 'tmp_name' ];
+
+    // Is it an image?
+    if( ( strtolower( $uploaded_ext ) == "jpg" || strtolower( $uploaded_ext ) == "jpeg" || strtolower( $uploaded_ext ) == "png" ) &&
+        ( $uploaded_size < 100000 ) &&
+        getimagesize( $uploaded_tmp ) ) {
+
+        // Can we move the file to the upload folder?
+        if( !move_uploaded_file( $uploaded_tmp, $target_path ) ) {
+            // No
+            echo '<pre>Your image was not uploaded.</pre>';
+        }
+        else {
+            // Yes!
+            echo "<pre>{$target_path} succesfully uploaded!</pre>";
+        }
+    }
+    else {
+        // Invalid file
+        echo '<pre>Your image was not uploaded. We can only accept JPEG or PNG images.</pre>';
+    }
+}
+
+?>
+```
+
+上传带webshell的图片,然后用文件包含来getshell
+
+### Imposible
+
+```php
+<?php
+
+if( isset( $_POST[ 'Upload' ] ) ) {
+    // Check Anti-CSRF token
+    checkToken( $_REQUEST[ 'user_token' ], $_SESSION[ 'session_token' ], 'index.php' );
+
+
+    // File information
+    $uploaded_name = $_FILES[ 'uploaded' ][ 'name' ];
+    $uploaded_ext  = substr( $uploaded_name, strrpos( $uploaded_name, '.' ) + 1);
+    $uploaded_size = $_FILES[ 'uploaded' ][ 'size' ];
+    $uploaded_type = $_FILES[ 'uploaded' ][ 'type' ];
+    $uploaded_tmp  = $_FILES[ 'uploaded' ][ 'tmp_name' ];
+
+    // Where are we going to be writing to?
+    $target_path   = DVWA_WEB_PAGE_TO_ROOT . 'hackable/uploads/';
+    //$target_file   = basename( $uploaded_name, '.' . $uploaded_ext ) . '-';
+    $target_file   =  md5( uniqid() . $uploaded_name ) . '.' . $uploaded_ext;
+    $temp_file     = ( ( ini_get( 'upload_tmp_dir' ) == '' ) ? ( sys_get_temp_dir() ) : ( ini_get( 'upload_tmp_dir' ) ) );
+    $temp_file    .= DIRECTORY_SEPARATOR . md5( uniqid() . $uploaded_name ) . '.' . $uploaded_ext;
+
+    // Is it an image?
+    if( ( strtolower( $uploaded_ext ) == 'jpg' || strtolower( $uploaded_ext ) == 'jpeg' || strtolower( $uploaded_ext ) == 'png' ) &&
+        ( $uploaded_size < 100000 ) &&
+        ( $uploaded_type == 'image/jpeg' || $uploaded_type == 'image/png' ) &&
+        getimagesize( $uploaded_tmp ) ) {
+
+        // Strip any metadata, by re-encoding image (Note, using php-Imagick is recommended over php-GD)
+        if( $uploaded_type == 'image/jpeg' ) {
+            $img = imagecreatefromjpeg( $uploaded_tmp );
+            imagejpeg( $img, $temp_file, 100);
+        }
+        else {
+            $img = imagecreatefrompng( $uploaded_tmp );
+            imagepng( $img, $temp_file, 9);
+        }
+        imagedestroy( $img );
+
+        // Can we move the file to the web root from the temp folder?
+        if( rename( $temp_file, ( getcwd() . DIRECTORY_SEPARATOR . $target_path . $target_file ) ) ) {
+            // Yes!
+            echo "<pre><a href='${target_path}${target_file}'>${target_file}</a> succesfully uploaded!</pre>";
+        }
+        else {
+            // No
+            echo '<pre>Your image was not uploaded.</pre>';
+        }
+
+        // Delete any temp files
+        if( file_exists( $temp_file ) )
+            unlink( $temp_file );
+    }
+    else {
+        // Invalid file
+        echo '<pre>Your image was not uploaded. We can only accept JPEG or PNG images.</pre>';
+    }
+}
+
+// Generate Anti-CSRF token
+generateSessionToken();
+
+?>
+```
+
+理论上还说可以打,`imagecreatefrom`进行了二次渲染,二次渲染绕过见[upload-labs的Pass-16](https://github.com/AMDyesIntelno/huaQ/blob/ea613d5250950e8e4c1d3faee35597c02769f29b/%E9%9D%B6%E5%9C%BA/upload-labs/README.md#pass-16)
+
+上传png图像,二次渲染后的图像仍然能够保留webshell,因此通过文件包含依然能够getshell
