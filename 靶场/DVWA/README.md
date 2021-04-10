@@ -483,7 +483,108 @@ generateSessionToken();
 
 ## CSRF 跨站请求伪造
 
+### Low
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## File Inclusion 文件包含
+
+### Low
+
+```php
+
+<?php
+
+// The page we wish to display
+$file = $_GET[ 'page' ];
+
+?>
+```
+
+无过滤,直接读`?page=/etc/passwd`
+
+### Medium
+
+```php
+
+<?php
+
+// The page we wish to display
+$file = $_GET[ 'page' ];
+
+// Input validation
+$file = str_replace( array( "http://", "https://" ), "", $file );
+$file = str_replace( array( "../", "..\"" ), "", $file );
+
+?>
+```
+
+还是可以直接读`?page=/etc/passwd`,或者利用双写来绕过`str_replace`,传入`..././..././..././..././..././etc/passwd`读取`/etc/passwd`
+
+### High
+
+```php
+
+<?php
+
+// The page we wish to display
+$file = $_GET[ 'page' ];
+
+// Input validation
+if( !fnmatch( "file*", $file ) && $file != "include.php" ) {
+    // This isn't the page we want!
+    echo "ERROR: File not found!";
+    exit;
+}
+
+?>
+```
+
+`$file`必须以`file`开头,因此使用file协议进行读取`?page=file:///etc/passwd`
+
+### Impossible
+
+```php
+<?php
+
+// The page we wish to display
+$file = $_GET[ 'page' ];
+
+// Only allow include.php or file{1..3}.php
+if( $file != "include.php" && $file != "file1.php" && $file != "file2.php" && $file != "file3.php" ) {
+    // This isn't the page we want!
+    echo "ERROR: File not found!";
+    exit;
+}
+
+?>
+```
+
+白名单yyds
 
 ## File Upload 文件上传
 
@@ -667,3 +768,5 @@ generateSessionToken();
 理论上还说可以打,`imagecreatefrom`进行了二次渲染,二次渲染绕过见[upload-labs的Pass-16](https://github.com/AMDyesIntelno/huaQ/blob/ea613d5250950e8e4c1d3faee35597c02769f29b/%E9%9D%B6%E5%9C%BA/upload-labs/README.md#pass-16)
 
 上传png图像,二次渲染后的图像仍然能够保留webshell,因此通过文件包含依然能够getshell
+
+`http://0.0.0.0:12345/vulnerabilities/fi/?page=/var/www/html/hackable/uploads/b1551a38b5fac8a13c38605e7c4ad9ad.png`
