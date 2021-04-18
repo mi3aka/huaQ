@@ -345,6 +345,8 @@ SELECT product_name, sale_price
 9. `UNION`
 
 > UNION操作符用于连接两个以上的SELECT语句的结果组合到一个结果集合中,多个SELECT语句会删除重复的数据,如果想保留重复记录,可以在UNION后面加ALL
+>
+> UNION内部的每个SELECT语句**必须拥有相同数量的列**
 
 `SELECT product_id, product_name FROM Product UNION SELECT product_id, product_name FROM Product2;`
 
@@ -389,3 +391,37 @@ ROLLBACK;
 2. `-- xxx`注意有一个空格
 
 3. `/*xxx*/`
+
+## 函数
+
+### concat()
+
+`concat()`函数用于将多个字符串连接成一个字符串
+
+返回结果为连接参数产生的字符串,如有任何一个参数为`NULL` ,则返回值为`NULL`,可以有一个或多个参数
+
+`select concat(id,' ',name) as id_name from students;`
+
+```
++---------+
+| id_name |
++---------+
+| 1 Sam   |
+| 2 Ben   |
++---------+
+```
+
+### group_concat()
+
+`group_concat()`函数返回一个字符串结果,由分组中的值连接组合而成
+
+`select group_concat(name) from students;`
+
+```
++--------------------+
+| group_concat(name) |
++--------------------+
+| Sam,Ben            |
++--------------------+
+```
+
