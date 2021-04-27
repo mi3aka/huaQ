@@ -58,31 +58,6 @@ payload`fl4g.php?num=1e10&md5=0e215962017&get_flag=tac%09fllllllllllllllllllllll
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ## [极客大挑战 2019]RCE ME
 
 > 类似于无参数RCE
