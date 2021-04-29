@@ -8,29 +8,16 @@
 
 ```php
 <?php
-    $a=1;
-    var_dump($a);
-    $b=array('a'=>3);
-    extract($b);
-    var_dump($a);
-	/*int(1)
-	int(3)*/
+$a=1;
+$b=2;
+extract($_GET['a']);
+var_dump($_GET['a']);
+var_dump($a);
+var_dump($b);
 ?>
 ```
 
-```php
-<?php
-    include("flag.php");
-    $a=NULL;
-    $b=file_get_contents("flag.php");
-    extract($_GET);
-    if($a===$b){
-        var_dump($flag);
-    }
-?>
-```
-
-`?a=123&b=123`
+传入`?a[a]=123&a[b]=456`得到`array(2) { ["a"]=> string(3) "123" ["b"]=> string(3) "456" } string(3) "123" string(3) "456"`可见变量已经被修改
 
 2. `parse_str`函数使用不当
 
