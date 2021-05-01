@@ -1,4 +1,4 @@
-## md5弱类型比较和强碰撞
+## MD5弱类型比较和强碰撞
 
 `md5 ( string $string , bool $binary = false ) : string`
 
