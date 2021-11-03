@@ -1213,3 +1213,15 @@ ERROR 1105 (HY000): XPATH syntax error: '~information_schema,c~'
 
 可以使用`if`,`updatexml`进行注入
 
+### Less-52
+
+`order by`注入,不需要进行闭合,同时也可以使用堆叠注入
+
+可以使用`rand`,`if`进行注入
+
+### Less-53
+
+`order by`注入,闭合方式为`'`,同时也可以使用堆叠注入
+
+可以使用`if`,`updatexml`进行注入
+
