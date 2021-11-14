@@ -37,7 +37,6 @@ system("cd / && ls");
 ```
 
 ```
-
 Warning: scandir(): open_basedir restriction in effect. File(/) is not within the allowed path(s): (/var/www/html) in /var/www/html/test.php on line 2
 
 Warning: scandir(/): failed to open dir: Operation not permitted in /var/www/html/test.php on line 2
@@ -153,4 +152,3 @@ bool(false)
 Warning: realpath(): open_basedir restriction in effect. File(/flag) is not within the allowed path(s): (/var/www/html) in /var/www/html/test.php on line 3
 bool(false)
 ```
-
