@@ -4,12 +4,6 @@
 
 [参考文章 https://xz.aliyun.com/t/6640#toc-10](https://xz.aliyun.com/t/6640#toc-10)
 
-### session反序列化漏洞
-
-
-### phar反序列化漏洞
-
-
 
 ### 反序列化字符串逃逸
 

