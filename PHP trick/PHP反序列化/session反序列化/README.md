@@ -39,31 +39,35 @@
 
 [https://www.php.net/session_start/](https://www.php.net/session_start/)
 
->当会话自动开始或者通过session_start()手动开始的时候，PHP 内部会调用会话管理器的open和read回调函数。会话管理器可能是PHP默认的，也可能是扩展提供的（SQLite或者Memcached扩展），也可能是通过session_set_save_handler()设定的用户自定义会话管理器。通过read回调函数返回的现有会话数据（使用特殊的序列化格式存储），PHP 会**自动反序列化数据并且填充$_SESSION超级全局变量**。 
+>当会话自动开始或者通过session_start()手动开始的时候，PHP内部会调用会话管理器的open和read回调函数。会话管理器可能是PHP默认的，也可能是扩展提供的（SQLite或者Memcached扩展），也可能是通过session_set_save_handler()设定的用户自定义会话管理器。通过read回调函数返回的现有会话数据（使用特殊的序列化格式存储），PHP 会**自动反序列化数据并且填充$_SESSION超级全局变量**
 
 ```php
 <?php
-    //1.php
-    error_reporting(0);
-    ini_set('session.serialize_handler','php');//使用php_serialize引擎存储
-    session_start();
-    $_SESSION['username']=$_GET['user'];
-    var_dump($_SESSION);
+//1.php
+error_reporting(0);
+ini_set('session.serialize_handler', 'php_serialize');//使用php_serialize引擎存储
+session_start();
+$_SESSION['username'] = $_GET['user'];
+var_dump($_SESSION);
 ?>
 ```
 
 ```php
 <?php
-    //2.php
-    error_reporting(0);
-    ini_set('session.serialize_handler','php');//使用php引擎存储
-    session_start();
-    class user{
-        var $name;
-        function __wakeup(){
-            echo $this->name;
-        }
+//2.php
+error_reporting(0);
+ini_set('session.serialize_handler', 'php');//使用php引擎存储
+session_start();
+
+class user
+{
+    var $name = "zhangsan";
+
+    public function __destruct()
+    {
+        echo $this->name;
     }
+}
 ?>
 ```
 
@@ -79,9 +83,9 @@
 
 [https://www.php.net/manual/zh/session.upload-progress.php](https://www.php.net/manual/zh/session.upload-progress.php)
 
-> 当session.upload_progress.enabled的INI选项开启时，PHP能够在每一个文件上传时监测上传进度。这个信息对上传请求自身并没有什么帮助，但在文件上传时应用可以发送一个POST请求到终端（例如通过XHR）来检查这个状态
+>当`session.upload_progress.enabled`的INI选项开启时，PHP能够在每一个文件上传时监测上传进度。这个信息对上传请求自身并没有什么帮助，但在文件上传时应用可以发送一个POST请求到终端（例如通过XHR）来检查这个状态
 >
->当一个上传在处理中，同时**POST一个与INI中设置的session.upload_progress.name同名变量**时，上传进度可以在$_SESSION中获得。当PHP检测到这种POST请求时，它会在$_SESSION中添加一组数据,索引是session.upload_progress.prefix与session.upload_progress.name连接在一起的值。
+>当一个上传在处理中，同时**POST一个与INI中设置的session.upload_progress.name同名变量**时，上传进度可以在`$_SESSION`中获得。当PHP检测到这种POST请求时，它会在`$_SESSION`中添加一组数据,索引是`session.upload_progress.prefix`与`session.upload_progress.name`连接在一起的值。
 
 [http://web.jarvisoj.com:32784/](http://web.jarvisoj.com:32784/)
 
