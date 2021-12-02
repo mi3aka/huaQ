@@ -144,8 +144,9 @@ array(31) {
 3. `chr(pos(localtime(time())))`当秒数为46时生成`.`
 4. `chr(ord(hebrevc(crypt(phpversion()))))`有概率生成`.`
 5. `chr(ord(strrev(crypt(serialize(array())))))`有概率生成`/`或者`.`
-6. `next(str_split(strval(cos(fclose(tmpfile())))))`
-7. `next(str_split(strval(tan(fclose(tmpfile())))))`
+6. `chr(ord(hebrevc(crypt(time()))))`有概率生成`.`
+7. `next(str_split(strval(cos(fclose(tmpfile())))))`
+8. `next(str_split(strval(tan(fclose(tmpfile())))))`
 
 ### 文件读取
 
@@ -414,20 +415,20 @@ if ($_POST['code']){
 ```php
 <?php
 #var_dump(get_defined_functions()["internal"]);
-$func=array();
-$j=0;
-for ($i=0;$i<count(get_defined_functions()["internal"]);$i++) { 
-    if (!preg_match('/et|na|nt|strlen|info|path|rand|dec|bin|hex|oct|pi|exp|log/i',get_defined_functions()["internal"][$i])) {
-        $func[$j]=get_defined_functions()["internal"][$i];
+$func = array();
+$j = 0;
+for ($i = 0; $i < count(get_defined_functions()["internal"]); $i++) {
+    if (!preg_match('/et|na|nt|strlen|info|path|rand|dec|bin|hex|oct|pi|exp|log/i', get_defined_functions()["internal"][$i])) {
+        $func[$j] = get_defined_functions()["internal"][$i];
         $j++;
     }
 }
 #print_r($func);
-$a=['getenv','getallheaders','get_defined_vars','session_id','getcwd','phpversion','localeconv','time','localtime','array_rand','array_flip','array_reverser','current','pos','end','floor','ceil','sqrt','dirname','chdir','scandir','system','sin','cos','tan','sinh','cosh','tanh','next','chr','ord','str_split','strval','fclose','tmpfile','file_get_contents','highlight_file','show_source','readfile','readgzfile','file'];
+$a = ['getenv', 'getallheaders', 'get_defined_vars', 'session_id', 'getcwd', 'phpversion', 'localeconv', 'time', 'localtime', 'array_rand', 'array_flip', 'array_reverser', 'current', 'pos', 'end', 'floor', 'ceil', 'sqrt', 'dirname', 'chdir', 'scandir', 'system', 'sin', 'cos', 'tan', 'sinh', 'cosh', 'tanh', 'next', 'chr', 'ord', 'str_split', 'strval', 'fclose', 'tmpfile', 'file_get_contents', 'highlight_file', 'show_source', 'readfile', 'readgzfile', 'file', 'hebrevc', 'crypt', 'serialize', 'array'];
 #print_r($a);
-for($i=0;$i<count($func);$i++){
-    for($j=0;$j<count($a);$j++){
-        if($a[$j]==$func[$i]){
+for ($i = 0; $i < count($func); $i++) {
+    for ($j = 0; $j < count($a); $j++) {
+        if ($a[$j] == $func[$i]) {
             var_dump($a[$j]);
         }
     }
