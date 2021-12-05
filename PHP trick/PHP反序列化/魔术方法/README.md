@@ -13,6 +13,8 @@ __sleep(),执行serialize()时,先会调用这个函数
 __wakeup(),执行unserialize()时,先会调用这个函数
 __toString(),类被当成字符串时的回应方法,有时可用于构造POP链
 __invoke(),当脚本尝试将对象调用为函数时触发
+__set_state(),当调用var_export()导出类时,此静态方法会被调用
+static __set_state(array $properties): object
 ```
 
 ### __sleep()与__wakeup()
@@ -96,7 +98,7 @@ a asdf,b qwer,c 1234
 5. 反序列化对象参与格式化SQL语句,绑定参数时
 
 6. 反序列化对象在经过php字符串函数,如`strlen()`,`addslashes()`时
-   
+
 7. 在in_array()方法中,第一个参数是反序列化对象,第二个参数的数组中有toString返回的字符串的时候toString会被调用
 
 8. 反序列化的对象作为`class_exists()`的参数的时候

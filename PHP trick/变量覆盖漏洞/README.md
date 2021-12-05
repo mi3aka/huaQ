@@ -38,7 +38,13 @@ var_dump($b);
 ?>
 ```
 
-3. `$$`可变变量
+3. `mb_parse_str`
+
+解析`GET/POST/COOKIE`数据并设置全局变量
+
+与`parse_str`相似
+
+4. `$$`可变变量
 
 ```php
 <?php
