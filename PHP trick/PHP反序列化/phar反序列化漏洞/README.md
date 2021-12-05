@@ -433,7 +433,7 @@ payload`file.php?file=phar://upload/337def6af3af5b39784016d8a5e06f8c.jpg`
 
 ---
 
-2019年新生赛 image-checker
+>todo 2019年新生赛 image-checker
 
 从`class.php`可以得知存在`curl_exec`,可以使用`file://`协议来进行文件读取
 
