@@ -1,8 +1,9 @@
 <?php
+highlight_file(__FILE__);
 $world = "World";
 echo "Hello, ", $world . "<br>";
 
-new mysqli("172.16.172.202", "root", "root", "mysql");
+new mysqli("172.17.0.1", "root", "root", "mysql");
 if (mysqli_connect_errno()) { #检查连接
     printf("Connect failed: %s\n", mysqli_connect_error());
     exit();
