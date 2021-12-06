@@ -1,5 +1,9 @@
 [带你走进PHP session反序列化漏洞](https://xz.aliyun.com/t/6640#toc-10)
 
+[PHP反序列化入门之session反序列化](https://mochazz.github.io/2019/01/29/PHP%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E5%85%A5%E9%97%A8%E4%B9%8Bsession%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/#PHP%E7%9A%84session%E6%9C%BA%E5%88%B6)
+
+[PHP反序列化漏洞学习——Session反序列化](https://ca01h.top/Web_security/php_related/4.PHP%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E5%AD%A6%E4%B9%A0-session%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96/)
+
 ## session反序列化
 
 ```php
@@ -165,3 +169,22 @@ else
 ```
 
 ![](PHP_Session_Upload2.png)
+
+## 例题
+
+>todo
+
+[2018 XCTF Final bestphp](https://github.com/shimmeris/CTF-Web-Challenges/tree/master/File-Inclusion/XCTF-Final-2018-Bestphp)
+
+
+
+
+
+
+
+
+
+
+
+
+[LCTF 2018 bestphp's revenge](https://github.com/CTFTraining/lctf_2018_bestphp_s_revenge)

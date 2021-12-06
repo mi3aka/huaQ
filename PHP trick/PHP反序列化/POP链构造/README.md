@@ -224,7 +224,7 @@ class MyFile {
         else
             $this->name = "/etc/passwd"; 
         if(isset($_GET['user'])) {
-            $this->user = $_GET['user']; //user可控,但name不可控,通过浅复制使name取user的值,进而达到控制name的目的
+            $this->user = $_GET['user']; //user可控,但name不可控,通过&使name取user的值,进而达到控制name的目的
         }
     }
     public function __destruct() {
@@ -250,7 +250,7 @@ class MyFile {
     public $user='';
 }
 $a=new MyFile();
-$a->name=&$a->user;//浅复制
+$a->name=&$a->user;
 var_dump(serialize($a));
 ?>
 ```
