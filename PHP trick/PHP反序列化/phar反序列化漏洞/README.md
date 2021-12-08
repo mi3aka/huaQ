@@ -618,4 +618,23 @@ string 'qwerDemoB' (length=9)
 
 phar文件再进过压缩,打包等处理后依然可以使用`phar://`协议正常读取
 
+
+
+注意到`ext/phar/phar.c`中存在`phar_open_from_fp`
+
+```cpp
+static int phar_open_from_fp(php_stream* fp, char *fname, size_t fname_len, char *alias, size_t alias_len, uint32_t options, phar_archive_data** pphar, int is_data, char **error) /* {{{ */
+{
+	const char token[] = "__HALT_COMPILER();";
+	const char zip_magic[] = "PK\x03\x04";
+	const char gz_magic[] = "\x1f\x8b\x08";
+	const char bz_magic[] = "BZh";
+```
+
+其中定义了Phar file stub和压缩文件的文件头
+
+
+
+
+
 >todo
