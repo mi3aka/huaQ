@@ -32,7 +32,7 @@
 
 ### 报错注入
 
-MYSQL在报错信息里可能会带有部分数据,利用这一特性进行注入
+mysql在报错信息里可能会带有部分数据,利用这一特性进行注入,但要注意数据外带的长度限制
 
 报错注入主要有以下几种
 
@@ -118,3 +118,39 @@ select ST_PointFromGeoHash((select*from(select*from(select @@version)x)y),1);
 
 3. xpath语法错误
 
+`ExtractValue()`和`UpdateXML()`
+
+`ExtractValue(xml_frag, xpath_expr)`
+
+`UpdateXML(xml_target, xpath_expr, new_xml)`
+
+第二个参数都要求符合xpath语法,如果不符合就会报错并带有数据,通过在前后添加`~`即`0x7e`使其不符合xpath格式从而报错
+
+```
+select updatexml(1,concat(0x7e,(select @@version),0x7e),1);
+select extractvalue(1,concat(0x7e,(select @@version),0x7e));
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211521265.png)
+
+4. 主键/列名重复报错
+
+
+>todo
+
+
+---
+
+mysql列名重复会报错,利用这一特性可以进行无列名注入
+
+>例子
+
+利用name_const来制造一个列,但参数需要是常量(The arguments should be constants)
+
+[https://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_name-const](https://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_name-const)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211544831.png)
+
+>无列名注入
+
+>todo
