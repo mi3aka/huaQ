@@ -1,4 +1,4 @@
->**SQL对大小写不敏感!!!**
+**SQL对大小写不敏感!!!**
 
 SQL语句可以分为以下三类
 
@@ -26,7 +26,7 @@ SQL语句可以分为以下三类
 
 3. DCL(Data Control Language,数据控制语言)
 
-用来确认或者取消对数据库中的数据进行的变更,对用户权限进行设定,DCL 包含以下几种指令
+用来确认或者取消对数据库中的数据进行的变更,对用户权限进行设定,DCL包含以下几种指令
 
 `COMMIT`确认对数据库中的数据进行的变更
 
@@ -202,7 +202,7 @@ A为10,B为20
 +----+------+------+
 ```
 
-`select * from students where id=1 or 2;`
+`select * from students where id=1 or id=2;`
 
 ```
 +----+------+------+
@@ -289,7 +289,7 @@ A为10,B为20
 
 8. 谓词
 
-- LIKE谓词
+- `LIKE`谓词
 
 前方一致查询:
 
@@ -299,7 +299,7 @@ A为10,B为20
 
 `SELECT * FROM SampleLike WHERE strcol LIKE 'abc_';`
 
-中间一致查询:
+中间一致查询(用得最多):
 
 `SELECT * FROM SampleLike WHERE strcol LIKE '%ddd%';`
 
@@ -307,19 +307,19 @@ A为10,B为20
 
 `SELECT * FROM SampleLike WHERE strcol LIKE '%ddd';`
 
-- BETWEEN谓词
+- `BETWEEN`谓词
 
 `SELECT product_name, sale_price FROM Product WHERE sale_price BETWEEN 100 AND 1000;`
 
-BETWEEN的特点就是结果中会包含100 和1000 这两个临界值
+BETWEEN的特点就是结果中会包含100和1000这两个临界值
 
-- IS NULL和IS NOT NULL谓词
+- `IS NULL`和`IS NOT NULL`谓词
 
 为了选取出某些值为NULL 的列的数据,不能使用`=`,而只能使用特定的谓词`IS NULL`
 
 `SELECT product_name, purchase_price FROM Product WHERE purchase_price IS NULL;`
 
-- IN谓词
+- `IN`谓词
 
 `SELECT product_name, purchase_price FROM Product WHERE purchase_price IN (320, 500, 5000);`
 
@@ -329,7 +329,7 @@ BETWEEN的特点就是结果中会包含100 和1000 这两个临界值
 
 >在使用`IN`和`NOT IN`时是无法选取出NULL 数据的
 
-- EXIST谓词
+- `EXIST`谓词
 
 ```
 SELECT product_name, sale_price
@@ -340,7 +340,7 @@ SELECT product_name, sale_price
                    AND SP.product_id = P.product_id);
 ```
 
-也可以用NOT EXIST
+也可以用`NOT EXIST`
 
 9. `UNION`
 
@@ -381,47 +381,3 @@ START TRANSACTION;
      WHERE product_name = 'T恤衫';
 ROLLBACK;
 ```
-
----
-
-## 注释
-
-1. `#xxx`
-
-2. `-- xxx`注意有一个空格
-
-3. `/*xxx*/`
-
-## 函数
-
-### concat()
-
-`concat()`函数用于将多个字符串连接成一个字符串
-
-返回结果为连接参数产生的字符串,如有任何一个参数为`NULL` ,则返回值为`NULL`,可以有一个或多个参数
-
-`select concat(id,' ',name) as id_name from students;`
-
-```
-+---------+
-| id_name |
-+---------+
-| 1 Sam   |
-| 2 Ben   |
-+---------+
-```
-
-### group_concat()
-
-`group_concat()`函数返回一个字符串结果,由分组中的值连接组合而成
-
-`select group_concat(name) from students;`
-
-```
-+--------------------+
-| group_concat(name) |
-+--------------------+
-| Sam,Ben            |
-+--------------------+
-```
-
