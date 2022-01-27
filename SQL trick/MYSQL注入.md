@@ -614,6 +614,76 @@ Time: 0.009s
 
 即多语句执行,例题可以参照sqli-labs的Less-38
 
+>todo pdo多语句执行
+
 ### 二次注入
 
+攻击者构造的恶意数据在数据库语句执行前进行了转义操作,但是服务器在从数据库中取出数据时没有进行相应的转义操作,导致了后续在进行语句拼接时产生的SQL注入问题
+
+```php
+public function add_user($username, $email, $password): bool
+{
+    $username = mysqli_real_escape_string($this->sql, $username);
+    $email = mysqli_real_escape_string($this->sql, $email);
+    $password = sha1($password);
+    if ($this->check_user_exist($username)) {
+        return false;
+    }
+    $sql_query = "INSERT INTO `users` (`id`, `username`, `password`) VALUES (NULL,'$username','$password')";
+    $this->sql->query($sql_query);
+    $sql_query = "INSERT INTO `email` (`id`, `username`, `email`, `time`) VALUES (NULL,'$username','$email',NOW())";
+    $this->sql->query($sql_query);
+    return true;
+}
+public function add_email($email)
+{
+    $id = $_SESSION['uid'];
+    $sql_query = "SELECT username FROM users where id = '$id'";
+    $row = mysqli_query($this->sql, $sql_query);
+    $result = $row->fetch_all(MYSQLI_ASSOC);
+    $username = $result[0]['username'];
+    $email = mysqli_real_escape_string($this->sql, $email);
+    $sql_query = "INSERT INTO `email` (`id`, `username`, `email`, `time`) VALUES (NULL,'$username','$email',NOW())";
+    $this->sql->query($sql_query);
+}
+public function list_email()
+{
+    $id = $_SESSION['uid'];
+    $sql_query = "SELECT username FROM users where id = '$id'";
+    $row = mysqli_query($this->sql, $sql_query);
+    $result = $row->fetch_all(MYSQLI_ASSOC);
+    $username = $result[0]['username'];
+    $sql_query = "SELECT email,time FROM email where username = '$username'";
+
+    $row = mysqli_query($this->sql, $sql_query);
+    $posi = 1;
+    echo '<div class="container"><table class="table"><thead><tr><th scope="col">#</th><th scope="col">Email</th><th scope="col">Time</th></tr></thead><tbody>';
+    while ($result = $row->fetch_assoc()) {
+        echo '<tr><th scope="row">' . $posi++ . '</th><td>' . $result['email'] . '</td><td>' . $result['time'] . '</td></tr>';
+    }
+    echo '</tbody></table></div>';
+}
+```
+
+可以看到`add_email`和`list_email`中所使用的`usernane`均来自数据库查询得到的结果,假设在注册时我们注册一个名为`' or 1#`的用户
+
+在注册过程中,由于存在`mysqli_real_escape_string`,敏感字符会被转义后再执行sql语句,但是从数据库取出`username`后,并没有执行相应的`mysqli_real_escape_string`,因此`SELECT email,time FROM email where username = '$username'`会变成`SELECT email,time FROM email where username = '' or 1#'`因此造成了二次注入
+
+## 注入技巧
+
 >todo
+
+### order by注入
+
+### limit注入
+
+### between and注入
+
+### dnslog外带数据
+
+### 文件读写
+
+### 约束攻击
+
+### 无列名注入
+
