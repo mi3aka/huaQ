@@ -20,6 +20,7 @@
   - [between and注入](#between-and注入)
   - [dnslog外带数据](#dnslog外带数据)
   - [文件读写](#文件读写)
+  - [宽字节注入](#宽字节注入)
   - [约束攻击](#约束攻击)
   - [无列名注入](#无列名注入)
   - [insert update delete注入](#insert-update-delete注入)
@@ -995,6 +996,8 @@ Time: 0.008s
 ### dnslog外带数据
 
 ### 文件读写
+
+### 宽字节注入
 
 ### 约束攻击
 

