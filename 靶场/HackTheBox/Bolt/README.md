@@ -913,9 +913,27 @@ gpg: decryption failed: No secret key
 
 [Cracking GPG key passwords using John The Ripper ](https://blog.atucom.net/2015/08/cracking-gpg-key-passwords-using-john.html)
 
-有个叫`gpg2john`的工具,不知道为啥系统里面的john没有这个工具...
+~~有个叫`gpg2john`的工具,不知道为啥系统里面的john没有这个工具...~~
 
-瞄了眼wp,密码是`merrychristmas`
+~~瞄了眼wp,密码是`merrychristmas`~~
+
+```
+git clone git://github.com/magnumripper/JohnTheRipper -b bleeding-jumbo john
+cd john/src
+./configure && make -s clean && make -sj4
+```
+
+在`john/run`中得到`gpg2john`
+
+`./gpg2john -d eddie.key > eddie.hash`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201311100853.png)
+
+```
+Eddie Johnson:$gpg$*1*668*2048*2b518595f971db147efe739e2716523786988fb0ee243e5981659a314dfd0779dbba8e14e6649ba4e00cc515b9b4055a9783be133817763e161b9a8d2f2741aba80bceef6024465cba02af3bccd372297a90e078aa95579afbd60b6171cd82fd1b32a9dd016175c088e7bef9b883041eaffe933383434752686688f9d235f1d26c006a698dd6cc132d8acb94c4eceebf010845d69cd9e114873538712f2cd50c8b9ca3bcb9bbc3d83e32564f99031776ac986195e643880483ac80d3f7f1b9143563418ddea7bb71d114c4f24e41134dcdac4662e934d955aeccae92038dbed32f300ac5abed65960e26486c5da59f0d17b71ad9a8fe7a5e6bb77b8c31b68b56e7f4025f01d534be45ab36a7c0818febe23fa577ca346023feefa2bfef0899dd860e05a54d8b3e8bd430f40791a52a20067fde1861d977adf222725658a4661927d65b877cb8ac977601990cfbdb27413f5acc25ff1f691556bc8e5264cffaebbea7e7b9d73de6c719e0a7b004d331eaada86e812e3db60904eaf73a1b79c6e68e74beb6b71f6d644afbf591426418976d68c4e580cbc60b6fdd113f239ae2acd1e1dc51cb74b96b3c2f082bc0214886e1c3cebb3611311d9112d61194df22fb3ceb5783ee7d4a61b544886b389f638fc85d5139f64997014ec38ac59e65b842d92afb50184ccc3549a57dcdb3fc8720cc394912aed931007b53da1c635d302e840da2e6342803831891ab1ccc1669f3cc3240b8d31eded96696d7ad1525c4d277a4d3123abecafdbdde207714539c2e546cd45c4452051394e5d00e711fa5353f817be4fa6827aa0f1428dfb93a918e93975fb4baf3297aa3b7fec33470cf2741237a629b869a762684602057f3e3e6df9c97631caa7589dc4b26653162dfb2f2cf508cbe375496ba735830c2c00f151cdd50c522afe33dbe4265d2*3*254*8*9*16*00000000000000000000000000000000*16777216*34af9ef3956d5ad8:::Eddie Johnson <eddie@bolt.htb>::eddie.key
+```
+
+`./john --wordlist=rockyou.txt eddie.hash`进行爆破,得到密码为`merrychristmas`
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201302207288.png)
 
