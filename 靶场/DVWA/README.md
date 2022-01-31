@@ -983,6 +983,37 @@ generateSessionToken();
 
 传入`-1' or length(database())=4#`返回`User ID exists in the database.`,说明`database()`长度为4
 
+```php
+<?php
+
+if( isset( $_GET[ 'Submit' ] ) ) {
+    // Get input
+    $id = $_GET[ 'id' ];
+
+    // Check database
+    $getid  = "SELECT first_name, last_name FROM users WHERE user_id = '$id';";
+    $result = mysqli_query($GLOBALS["___mysqli_ston"],  $getid ); // Removed 'or die' to suppress mysql errors
+
+    // Get results
+    $num = @mysqli_num_rows( $result ); // The '@' character suppresses errors
+    if( $num > 0 ) {
+        // Feedback for end user
+        echo '<pre>User ID exists in the database.</pre>';
+    }
+    else {
+        // User wasn't found, so the page wasn't!
+        header( $_SERVER[ 'SERVER_PROTOCOL' ] . ' 404 Not Found' );
+
+        // Feedback for end user
+        echo '<pre>User ID is MISSING from the database.</pre>';
+    }
+
+    ((is_null($___mysqli_res = mysqli_close($GLOBALS["___mysqli_ston"]))) ? false : $___mysqli_res);
+}
+
+?>
+```
+
 ### Medium
 
 只会返回`User ID exists in the database`或者`User ID is MISSING from the database.`
@@ -990,4 +1021,119 @@ generateSessionToken();
 传入`-1`返回`User ID is MISSING from the database.`
 
 传入`-1 or 1=1#`返回`User ID exists in the database.`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201311359839.png)
+
+```php
+<?php
+
+if( isset( $_POST[ 'Submit' ]  ) ) {
+    // Get input
+    $id = $_POST[ 'id' ];
+    $id = ((isset($GLOBALS["___mysqli_ston"]) && is_object($GLOBALS["___mysqli_ston"])) ? mysqli_real_escape_string($GLOBALS["___mysqli_ston"],  $id ) : ((trigger_error("[MySQLConverterToo] Fix the mysql_escape_string() call! This code does not work.", E_USER_ERROR)) ? "" : ""));
+
+    // Check database
+    $getid  = "SELECT first_name, last_name FROM users WHERE user_id = $id;";
+    $result = mysqli_query($GLOBALS["___mysqli_ston"],  $getid ); // Removed 'or die' to suppress mysql errors
+
+    // Get results
+    $num = @mysqli_num_rows( $result ); // The '@' character suppresses errors
+    if( $num > 0 ) {
+        // Feedback for end user
+        echo '<pre>User ID exists in the database.</pre>';
+    }
+    else {
+        // Feedback for end user
+        echo '<pre>User ID is MISSING from the database.</pre>';
+    }
+
+    //mysql_close();
+}
+
+?>
+```
+
+### High
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201311401774.png)
+
+注入点在cookie中
+
+```php
+<?php
+
+if( isset( $_COOKIE[ 'id' ] ) ) {
+    // Get input
+    $id = $_COOKIE[ 'id' ];
+
+    // Check database
+    $getid  = "SELECT first_name, last_name FROM users WHERE user_id = '$id' LIMIT 1;";
+    $result = mysqli_query($GLOBALS["___mysqli_ston"],  $getid ); // Removed 'or die' to suppress mysql errors
+
+    // Get results
+    $num = @mysqli_num_rows( $result ); // The '@' character suppresses errors
+    if( $num > 0 ) {
+        // Feedback for end user
+        echo '<pre>User ID exists in the database.</pre>';
+    }
+    else {
+        // Might sleep a random amount
+        if( rand( 0, 5 ) == 3 ) {
+            sleep( rand( 2, 4 ) );
+        }
+
+        // User wasn't found, so the page wasn't!
+        header( $_SERVER[ 'SERVER_PROTOCOL' ] . ' 404 Not Found' );
+
+        // Feedback for end user
+        echo '<pre>User ID is MISSING from the database.</pre>';
+    }
+
+    ((is_null($___mysqli_res = mysqli_close($GLOBALS["___mysqli_ston"]))) ? false : $___mysqli_res);
+}
+
+?>
+```
+
+### Impossible
+
+```php
+<?php
+
+if( isset( $_GET[ 'Submit' ] ) ) {
+    // Check Anti-CSRF token
+    checkToken( $_REQUEST[ 'user_token' ], $_SESSION[ 'session_token' ], 'index.php' );
+
+    // Get input
+    $id = $_GET[ 'id' ];
+
+    // Was a number entered?
+    if(is_numeric( $id )) {
+        // Check the database
+        $data = $db->prepare( 'SELECT first_name, last_name FROM users WHERE user_id = (:id) LIMIT 1;' );
+        $data->bindParam( ':id', $id, PDO::PARAM_INT );
+        $data->execute();
+
+        // Get results
+        if( $data->rowCount() == 1 ) {
+            // Feedback for end user
+            echo '<pre>User ID exists in the database.</pre>';
+        }
+        else {
+            // User wasn't found, so the page wasn't!
+            header( $_SERVER[ 'SERVER_PROTOCOL' ] . ' 404 Not Found' );
+
+            // Feedback for end user
+            echo '<pre>User ID is MISSING from the database.</pre>';
+        }
+    }
+}
+
+// Generate Anti-CSRF token
+generateSessionToken();
+
+?>
+```
+
+预编译加数字检测
 
