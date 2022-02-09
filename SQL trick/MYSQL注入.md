@@ -31,17 +31,65 @@
 
 ## 注释
 
+1. 行间注释
+
 ```
-1. #xxx
-2. -- xxx 注意有一个空格
-3. /*xxx*/
-4. `xxx`
-5. ;%00
+#xxx
+-- xxx 注意有一个空格
+`xxx
+;%00
 ```
 
-![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201202343264.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091253252.png)
 
-![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201202344062.png)
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091255869.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091255286.png)
+
+```php
+<?php
+highlight_file(__FILE__);
+error_reporting(0);
+$db = new mysqli("192.168.241.128", "root", "root", "mysql", "4700");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+$test =$_POST['test'];
+$query = "select host,user from user where user = '$test';";
+$result = $db->query($query);
+if($db->error){
+    echo "<br>".$db->error."<br>";
+}
+if ($result->num_rows !== 0) {
+    var_dump($result->fetch_all());
+}
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091303403.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091303600.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091303599.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091307478.png)
+
+2. 行内注释
+
+```
+/*xxx*/
+命令执行 /*!xxx*/
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091341314.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091342227.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091346194.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091349547.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091350068.png)
 
 ## 常用注入手段
 
@@ -2066,5 +2114,7 @@ Time: 0.008s
 ### insert update delete注入
 
 与`select`不同,没有数据直接回显,通常结合报错注入或延时注入
+
+>insert注入会产生大量垃圾数据,delete注入要注意防止条件为永真
 
 ## 未完待续...
