@@ -78,7 +78,7 @@ if ($result->num_rows !== 0) {
 
 ```
 /*xxx*/
-命令执行 /*!xxx*/
+语句执行 /*!xxx*/
 ```
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091341314.png)
@@ -91,15 +91,23 @@ if ($result->num_rows !== 0) {
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202091350068.png)
 
+如果在`!`字符后添加版本号,则只有当mysql版本大于或等于指定的版本号时才会执行注释中的语法
+
+[https://dev.mysql.com/doc/refman/5.7/en/comments.html](https://dev.mysql.com/doc/refman/5.7/en/comments.html)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202092034319.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202092035787.png)
+
 ## 常用注入手段
 
 ### 联合查询注入
 
 联合查询注入即在原有的查询语句中,通过`union`拼接传入的恶意语句,达到获取数据的目的(常用于有回显的情况)
 
-正常查询语句 `select column_name from table where xxx`
+正常查询语句`select column_name from table where xxx`
 
-恶意查询语句 `select column_name from table where xxx union select column_name (from table where xxx)`()可选
+恶意查询语句`select column_name from table where xxx union select column_name (from table where xxx)`()可选
 
 使用`union`进行拼接时,前后两个`select`语句所返回的字段数必须一致
 
