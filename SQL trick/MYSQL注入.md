@@ -618,7 +618,7 @@ select * from table3 where id='-1' or if (length(database())>1,(select count(*) 
 Time: 0.361s
 ```
 
-1. get_lock
+4. get_lock
 
 [https://dev.mysql.com/doc/refman/5.7/en/locking-functions.html](https://dev.mysql.com/doc/refman/5.7/en/locking-functions.html)
 
@@ -1917,10 +1917,10 @@ $result = $db->query($query);
 var_dump($result->fetch_row());
 ```
 
-直接注册`admin`显然是不可以的,但是可以对`username`传入参数为`admin          a`
+直接注册`admin`显然是不可以的,但是可以对`username`传入参数为`admin     a`
 
 ```
-mysql root@localhost:sql_injection_test> select * from user where username="admin          a"
+mysql root@localhost:sql_injection_test> select * from user where username="admin     a"
 +----+----------+----------+
 | id | username | password |
 +----+----------+----------+
@@ -1928,9 +1928,9 @@ mysql root@localhost:sql_injection_test> select * from user where username="admi
 Time: 0.009s
 ```
 
-显然`admin          a`不存在数据库中,因此进行插入操作,而在进行插入操作时,由于字符串过长,mysql会对字符串进行截断后插入,字符串被截断为`admin     `
+显然`admin     a`不存在数据库中,因此进行插入操作,而在进行插入操作时,由于字符串过长,mysql会对字符串进行截断后插入,字符串被截断为`admin     `(5个空格)然后进行插入操作
 
-mysql对空格会特殊处理,因此在实际插入操作时插入的数据为`admin`,由此达到了平行越权的目的
+mysql对空格会特殊处理,具体表现在进行select操作时会忽略该字段的后面多余的空格,由此达到了平行越权的目的
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201282045402.png)
 
