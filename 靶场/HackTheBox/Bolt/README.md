@@ -137,7 +137,7 @@ Found: mail.bolt.htb (Status: 200) [Size: 4943]
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201292145113.png)
 
-全局搜素`Invite Code`,发现其在`image/41093412e0da959c80875bb0db640c1302d5bcdffec759a3a5670950272789ad/app/base/forms.py`中出现
+全局搜索`Invite Code`,发现其在`image/41093412e0da959c80875bb0db640c1302d5bcdffec759a3a5670950272789ad/app/base/forms.py`中出现
 
 ```python
 # -*- encoding: utf-8 -*-
