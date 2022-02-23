@@ -1,6 +1,6 @@
 ![](2021-12-06%2009-00-53%20的屏幕截图.png)
 
-file_put_contents可以使用数组进行传参
+`file_put_contents`可以使用数组进行传参
 
 ```php
 <?php

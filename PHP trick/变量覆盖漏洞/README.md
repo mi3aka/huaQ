@@ -29,20 +29,25 @@ var_dump($b);
 
 ```php
 <?php
-    $a=1;
-    var_dump($a);
-    parse_str("a=3");
-    var_dump($a);
-	/*int(1)
-    string(1) "3"*/
-?>
+$a = 1;
+$b = 2;
+var_dump($a);
+var_dump($b);
+parse_str("a=3&b=5");
+var_dump($a);
+var_dump($b);
+```
+
+```
+int 1
+int 2
+string '3' (length=1)
+string '5' (length=1)
 ```
 
 3. `mb_parse_str`
 
-解析`GET/POST/COOKIE`数据并设置全局变量
-
-与`parse_str`相似
+解析`GET/POST/COOKIE`数据并设置全局变量,与`parse_str`相似
 
 4. `$$`可变变量
 

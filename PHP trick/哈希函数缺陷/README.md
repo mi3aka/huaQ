@@ -1,10 +1,12 @@
-函数定义 `md5 ( string $string , bool $binary = false ) : string`
+函数定义 `md5(string $string, bool $binary = false): string`
 
-- `string` 要计算的字符串
+函数定义 `sha1(string $string, bool $binary = false): string`
 
-- `binary` 如果可选的 `binary` 被设置为 **true**,那么 md5 摘要将以 16 字符长度的**原始二进制格式**返回
+- `string`要计算的字符串
 
-## md5弱类型比较
+- `binary`如果可选的`binary`被设置为**true**,那么哈希函数将以**原始二进制格式**返回
+
+## 弱类型比较
 
 ```php
 <?php
@@ -22,7 +24,7 @@ if(isset($_POST['a']) and isset($_POST['b'])){
 ?>
 ```
 
-1. md5不能加密数组,在加密数组的时候会返回`NULL`,因此POST传参`a[]=1&b[]=2`
+1. md5不能加密数组,在加密数组的时候会返回`NULL`,因此POST传参`a[]=1&b[]=2`,sha1同理
 
 ```php
 array (size=1)
@@ -34,7 +36,7 @@ null
 flag
 ```
 
-2. md5进行的是弱类型比较,如果两个md5之后的结果均为`0e`开头的字符串则会被判断为相等
+2. md5进行的是弱类型比较,如果两个md5之后的结果均为`0e`开头的字符串则会被判断为相等,sha1同理
 
 ```python
 import hashlib
@@ -61,6 +63,21 @@ string '314282422' (length=9)
 string '0e462097431906509019562988736854' (length=32)
 string '0e990995504821699494520356953734' (length=32)
 flag
+```
+
+```php
+<?php
+var_dump(sha1('aaroZmOk'));
+var_dump(sha1('aaK1STfY'));
+var_dump(sha1('aaO8zKZF'));
+var_dump(sha1('aa3OFF9m'));
+```
+
+```
+string '0e66507019969427134894567494305185566735' (length=40)
+string '0e76658526655756207688271159624026011393' (length=40)
+string '0e89257456677279068558073954252716165668' (length=40)
+string '0e36977786278517984959260394024281014729' (length=40)
 ```
 
 ## md5强类型比较
@@ -203,9 +220,9 @@ md5`ffifdyop`得到`'or'6\xc9]\x99\xe9!r,\xf9\xedb\x1c`
 
 `if($_POST['param1']!==$_POST['param2']&&md5($_POST['param1'])===md5($_POST['param2']))`传两个md5相同的文件即可getflag
 
-## md5原始二进制格式造成sql注入
+## 原始二进制格式造成sql注入
 
->如果可选的 `binary` 被设置为 **true**,那么 md5 摘要将以 16 字符长度的**原始二进制格式**返回
+>如果可选的`binary`被设置为**true**,那么哈希函数将以**原始二进制格式**返回
 
 ```php
 <?php

@@ -1,4 +1,4 @@
-# 强制gc
+# 强制垃圾回收
 
 [Breaking PHP’s Garbage Collection and Unserialize](https://www.evonide.com/breaking-phps-garbage-collection-and-unserialize/)
 
@@ -60,3 +60,4 @@ string 'a:2:{i:0;O:4:"demo":0:{}i:0;O:4:"fake":0:{}}' (length=44)
 
 因为在执行序列化前,第一个元素即`$a`已经被第二个元素所覆盖
 
+>todo

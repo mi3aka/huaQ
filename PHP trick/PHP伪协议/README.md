@@ -21,13 +21,7 @@ expect:// — 处理交互式的流
 
 >PHP.ini:
 >
->file:// 协议在双off的情况下也可以正常使用
->
->allow_url_fopen :
-off/on
->
->allow_url_include:
-off/on
+>file:// 协议在双off(allow_url_fopen和allow_url_include)的情况下也可以正常使用
 
 `file://`用于访问本地文件系统,在CTF中通常用来读取本地文件的且不受allow_url_fopen与allow_url_include的影响
 
