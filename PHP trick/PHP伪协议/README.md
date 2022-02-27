@@ -285,3 +285,7 @@ include($_GET["a"]);
 `http://localhost:32989/?a=phar:///var/www/html/phpinfo.zip/phpinfo.php`
 
 `http://localhost:32989/?a=phar://phpinfo.zip/phpinfo.php`
+
+## 死亡绕过
+
+>todo
