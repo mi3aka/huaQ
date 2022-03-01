@@ -28,6 +28,7 @@
   - [无列名注入](#无列名注入)
   - [insert update delete注入](#insert-update-delete注入)
 - [过滤与替换](#过滤与替换)
+  - [information_schema被过滤](#information_schema被过滤)
   - [and与or被过滤](#and与or被过滤)
   - [空格被过滤](#空格被过滤)
   - [逗号被过滤](#逗号被过滤)
@@ -2145,6 +2146,24 @@ Time: 0.008s
 >insert注入会产生大量垃圾数据,delete注入要注意防止条件为永真
 
 ## 过滤与替换
+
+### information_schema被过滤
+
+1. `sys.schema_auto_increment_columns`
+
+2. `sys.x$innodb_buffer_stats_by_table`
+
+3. `sys.x$ps_schema_table_statistics_io`
+
+4. `sys.schema_table_statistics_with_buffer`
+
+5. `sys.x$schema_table_statistics_with_buffer`
+
+6. `performance_schema.table_io_waits_summary_by_table`
+
+7. `mysql.innodb_index_stats`
+
+8. `mysql.innodb_table_stats`
 
 ### and与or被过滤
 
