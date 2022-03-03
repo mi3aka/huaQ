@@ -105,6 +105,15 @@ if ($result->num_rows !== 0) {
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202092035787.png)
 
+>`/*!`不需要完全闭合,利用这点可以绕过某些waf的限制
+
+```
+/*!select @@version*/
+/*!select/*!@@version*/
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203011612543.png)
+
 ## 常用注入手段
 
 ### 联合查询注入
@@ -2148,6 +2157,8 @@ Time: 0.008s
 ## 过滤与替换
 
 ### information_schema被过滤
+
+>某些表需要权限才能访问
 
 1. `sys.schema_auto_increment_columns`
 

