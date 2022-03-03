@@ -168,3 +168,147 @@ elseif ($act == 'send')
 数据库查询结果
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203031720568.png)
+
+## admin/ad.php存在SQL注入漏洞
+
+```php
+elseif($act == 'edit')
+{
+	 $ad_id = !empty($_GET['ad_id']) ? trim($_GET['ad_id']) : '';
+	 if(empty($ad_id))
+	 {
+		 return false;
+	 }
+	 $ad = $db->getone("SELECT ad_id, ad_name, time_set, start_time, end_time, content, exp_content FROM ".table('ad')." WHERE ad_id=".$ad_id);
+	 template_assign(
+	 	array(
+	 		'current_act', 
+	 		'act', 
+	 		'ad'
+	 	), 
+	 	array(
+	 		'�༭���', 
+	 		$act, 
+	 		$ad
+	 	)
+	 );
+	 $smarty->display('ad_info.htm');
+}
+
+```
+
+`$ad_id`仅经过trim,同时没有单引号闭合,`admin`目录下还有多个类似的注入点
+
+## user.php存在文件包含漏洞
+
+```php
+elseif ($act == 'pay'){
+    include 'data/pay.cache.php';
+    $price = $_POST['price'];
+    $id = $_POST['id'];
+    $name = $_POST['name'];
+    if (empty($_POST['pay'])) {
+    	showmsg('对不起，您没有选择支付方式');
+    }
+    include 'include/payment/'.$_POST['pay']."/index.php";
+}
+```
+
+利用`../`进行目录遍历并结合00截断进行文件包含
+
+## user.php存在任意文件删除
+
+```php
+ //编辑个人资料
+ elseif($act == 'edit_user_info'){
+	 $user_id = intval($_SESSION['user_id']);
+	 if(empty($user_id)){
+		 return false;
+	 }
+	$birthday = trim($_POST['birthday']);
+	$sex = intval($_POST['sex']);
+    $email = !empty($_POST['email']) ? trim($_POST['email']) : '';
+    $msn = !empty($_POST['msn']) ? trim($_POST['msn']) : '';
+    $qq = !empty($_POST['qq']) ? trim($_POST['qq']) : '';
+    $mobile_phone = !empty($_POST['mobile_phone']) ? trim($_POST['mobile_phone']) : '';
+    $office_phone = !empty($_POST['office_phone']) ? trim($_POST['office_phone']) : '';
+    $home_phone   = !empty($_POST['home_phone']) ? trim($_POST['home_phone']) : '';
+	$address = !empty($_POST['address']) ? htmlspecialchars($_POST['address']) : '';
+
+	if (!empty($_POST['face_pic1'])){
+        if (strpos($_POST['face_pic1'], 'http://') != false && strpos($_POST['face_pic1'], 'https://') != false){
+           showmsg('只支持本站相对路径地址');
+         }
+        else{
+           $face_pic = trim($_POST['face_pic1']);
+        }
+    }else{
+		if(file_exists(BLUE_ROOT.$_POST['face_pic3'])){
+			@unlink(BLUE_ROOT.$_POST['face_pic3']);
+		}
+	}
+```
+
+```php
+ 	//插入新图片
+	$db->query("DELETE FROM ".table('post_pic')." WHERE post_id = ".$post_id);
+ 	for($i=0;$i<4;$i++){
+ 		if($_POST['pic'.$i] && file_exists(BLUE_ROOT.$_POST['pic'.$i])){
+ 			$sql = "INSERT INTO ".table('post_pic')." (pic_id, post_id, pic_path) VALUES ('', '$post_id', '".$_POST['pic'.$i]."')";
+ 			$db->query($sql);
+ 		}
+ 	}
+	//如果没有图片，则将信息缩略图设置为默认图片
+	if (file_exists(BLUE_ROOT.$_POST['lit_pic'])) {
+		@unlink(BLUE_ROOT.$_POST['lit_pic']);
+	}
+```
+
+`face_pic3`和`lit_pic`均可以传入`../`进行目录遍历并删除某个文件
+
+## admin.php存在任意文件删除
+
+```php
+elseif($act == 'del')
+{
+ 	$file_name = !empty($_GET['file_name']) ? trim($_GET['file_name']) : '';
+	$file = BLUE_ROOT.DATA."backup/".$file_name;
+	if(!@unlink($file))
+	{
+		showmsg('删除备份文件失败');
+	}
+	else
+	{
+		showmsg('删除备份文件成功', 'database.php?act=restore');
+	}
+}
+```
+
+`$file_name`传入`../`进行目录遍历并删除某个文件
+
+## admin/tpl_manage.php存在任意文件写入
+
+```php
+ elseif($act == 'do_edit'){
+ 	$tpl_name = !empty($_POST['tpl_name']) ? trim($_POST['tpl_name']) : '';
+ 	$tpl_content = !empty($_POST['tpl_content']) ? deep_stripslashes($_POST['tpl_content']) : '';
+ 	if(empty($tpl_name)){
+ 		return false;
+ 	}
+ 	$tpl = BLUE_ROOT.'templates/default/'.$tpl_name;
+ 	if(!$handle = @fopen($tpl, 'wb')){
+		showmsg("打开目标模版文件 $tpl 失败");
+ 	}
+ 	if(fwrite($handle, $tpl_content) === false){
+ 		showmsg('写入目标 $tpl 失败');
+ 	}
+ 	fclose($handle);
+ 	showmsg('编辑模板成功', 'tpl_manage.php');
+ }
+```
+
+>这里需要admin权限
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203032007882.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203032008035.png)
