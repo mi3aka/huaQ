@@ -371,3 +371,382 @@ else if($action=='savetagfile')
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203092114970.png)
 
+## member/resetpassword.php存在任意用户重置密码漏洞
+
+```php
+if ($dopost == "") {
+    include(dirname(__FILE__) . "/templets/resetpassword.htm");
+} elseif ($dopost == "getpwd") {
+
+    //验证验证码
+    if (!isset($vdcode)) $vdcode = '';
+
+    $svali = GetCkVdValue();
+    if (strtolower($vdcode) != $svali || $svali == '') {
+        ResetVdValue();
+        ShowMsg("对不起，验证码输入错误！", "-1");
+        exit();
+    }
+
+    //验证邮箱，用户名
+    if (empty($mail) && empty($userid)) {
+        showmsg('对不起，请输入用户名或邮箱', '-1');
+        exit;
+    } else if (!preg_match("#(.*)@(.*)\.(.*)#", $mail)) {
+        showmsg('对不起，请输入正确的邮箱格式', '-1');
+        exit;
+    } else if (CheckUserID($userid, '', false) != 'ok') {
+        ShowMsg("你输入的用户名 {$userid} 不合法！", "-1");
+        exit();
+    }
+    $member = member($mail, $userid);
+
+    //以邮件方式取回密码；
+    if ($type == 1) {
+        //判断系统邮件服务是否开启
+        if ($cfg_sendmail_bysmtp == "Y") {
+            sn($member['mid'], $userid, $member['email']);
+        } else {
+            showmsg('对不起邮件服务暂未开启，请联系管理员', 'login.php');
+            exit();
+        }
+
+        //以安全问题取回密码；
+    } else if ($type == 2) {
+        if ($member['safequestion'] == 0) {
+            showmsg('对不起您尚未设置安全密码，请通过邮件方式重设密码', 'login.php');
+            exit;
+        }
+        require_once(dirname(__FILE__) . "/templets/resetpassword3.htm");
+    }
+    exit();
+} else if ($dopost == "safequestion") {
+    $mid = preg_replace("#[^0-9]#", "", $id);
+    $sql = "SELECT safequestion,safeanswer,userid,email FROM #@__member WHERE mid = '$mid'";
+    $row = $db->GetOne($sql);
+    if (empty($safequestion)) $safequestion = '';
+
+    if (empty($safeanswer)) $safeanswer = '';
+
+    if ($row['safequestion'] == $safequestion && $row['safeanswer'] == $safeanswer) {
+        sn($mid, $row['userid'], $row['email'], 'N');
+        exit();
+    } else {
+        ShowMsg("对不起，您的安全问题或答案回答错误", "-1");
+        exit();
+    }
+} else if ($dopost == "getpasswd") {
+    //修改密码
+    if (empty($id)) {
+        ShowMsg("对不起，请不要非法提交", "login.php");
+        exit();
+    }
+    $mid = preg_replace("#[^0-9]#", "", $id);
+    $row = $db->GetOne("SELECT * FROM #@__pwd_tmp WHERE mid = '$mid'");
+    if (empty($row)) {
+        ShowMsg("对不起，请不要非法提交", "login.php");
+        exit();
+    }
+    if (empty($setp)) {
+        $tptim = (60 * 60 * 24 * 3);
+        $dtime = time();
+        if ($dtime - $tptim > $row['mailtime']) {
+            $db->executenonequery("DELETE FROM `#@__pwd_tmp` WHERE `md` = '$id';");
+            ShowMsg("对不起，临时密码修改期限已过期", "login.php");
+            exit();
+        }
+        require_once(dirname(__FILE__) . "/templets/resetpassword2.htm");
+    } elseif ($setp == 2) {
+        if (isset($key)) $pwdtmp = $key;
+
+        $sn = md5(trim($pwdtmp));
+        if ($row['pwd'] == $sn) {
+            if ($pwd != "") {
+                if ($pwd == $pwdok) {
+                    $pwdok = md5($pwdok);
+                    $sql = "DELETE FROM `#@__pwd_tmp` WHERE `mid` = '$id';";
+                    $db->executenonequery($sql);
+                    $sql = "UPDATE `#@__member` SET `pwd` = '$pwdok' WHERE `mid` = '$id';";
+                    if ($db->executenonequery($sql)) {
+                        showmsg('更改密码成功，请牢记新密码', 'login.php');
+                        exit;
+                    }
+                }
+            }
+            showmsg('对不起，新密码为空或填写不一致', '-1');
+            exit;
+        }
+        showmsg('对不起，临时密码错误', '-1');
+        exit;
+    }
+}
+```
+
+在`getpwd`这部分会对用户是否设置安全问题以及系统是否设置邮件服务进行检查,如果用户没有设置安全问题,则会要求通过邮件方式重设密码
+
+但是重置密码这部分是通过`$dopost`来进行步骤的判断,因此可以通过传入不同的`$dopost`控制重置密码的步骤
+
+可以直接传入`dopost=safequestion`来跳转到使用安全问题重置密码这一步骤,在这一步骤中,由于存在弱类型判断,因此可以进行任意用户密码重置
+
+验证码发送条件`$row['safequestion'] == $safequestion && $row['safeanswer'] == $safeanswer`,`$row`的结果来源于数据库查询,而如果用户没有设置安全问题,则数据库查询`$row['safequestion']`返回`0`,而`$row['safeanswer']`返回`""`
+
+但由于`if (empty($safequestion)) $safequestion = '';`和`if (empty($safeanswer)) $safeanswer = '';`的存在,直接对这两个参数传入`0`会被设置为`''`,因为`empty('0')`为`true`
+
+因此`$safequestion`传入`00`,`$safeanswer`传入`0`然后被设置成`''`,即可满足发送条件
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203101904343.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203101905732.png)
+
+```php
+function newmail($mid, $userid, $mailto, $type, $send)
+{
+    global $db,$cfg_adminemail,$cfg_webname,$cfg_basehost,$cfg_memberurl;
+    $mailtime = time();
+    $randval = random(8);
+    $mailtitle = $cfg_webname.":密码修改";
+    $mailto = $mailto;
+    $headers = "From: ".$cfg_adminemail."\r\nReply-To: $cfg_adminemail";
+    $mailbody = "亲爱的".$userid."：\r\n您好！感谢您使用".$cfg_webname."网。\r\n".$cfg_webname."应您的要求，重新设置密码：（注：如果您没有提出申请，请检查您的信息是否泄漏。）\r\n本次临时登陆密码为：".$randval." 请于三天内登陆下面网址确认修改。\r\n".$cfg_basehost.$cfg_memberurl."/resetpassword.php?dopost=getpasswd&id=".$mid;
+    if($type == 'INSERT')
+    {
+        $key = md5($randval);
+        $sql = "INSERT INTO `#@__pwd_tmp` (`mid` ,`membername` ,`pwd` ,`mailtime`)VALUES ('$mid', '$userid',  '$key', '$mailtime');";
+        if($db->ExecuteNoneQuery($sql))
+        {
+            if($send == 'Y')
+            {
+                sendmail($mailto,$mailtitle,$mailbody,$headers);
+                return ShowMsg('EMAIL修改验证码已经发送到原来的邮箱请查收', 'login.php','','5000');
+            } else if ($send == 'N')
+            {
+                return ShowMsg('稍后跳转到修改页', $cfg_basehost.$cfg_memberurl."/resetpassword.php?dopost=getpasswd&amp;id=".$mid."&amp;key=".$randval);
+            }
+        }
+        else
+        {
+            return ShowMsg('对不起修改失败，请联系管理员', 'login.php');
+        }
+    }
+    ...
+}
+
+function sn($mid,$userid,$mailto, $send = 'Y')
+{
+    global $db;
+    $tptim= (60*10);
+    $dtime = time();
+    $sql = "SELECT * FROM #@__pwd_tmp WHERE mid = '$mid'";
+    $row = $db->GetOne($sql);
+    if(!is_array($row))
+    {
+        //发送新邮件；
+        newmail($mid,$userid,$mailto,'INSERT',$send);
+    }
+
+    ...
+}
+```
+
+通过`ShowMsg('稍后跳转到修改页', $cfg_basehost.$cfg_memberurl."/resetpassword.php?dopost=getpasswd&amp;id=".$mid."&amp;key=".$randval);`获取到修改密码所需要的临时密钥,由此成功修改用户密码
+
+利用这个漏洞的前提在于用户没有设置安全问题,同时cms在后台开放用户注册
+
+成功获取到重置密码的连接`http://192.168.241.130:8080/member/resetpassword.php?dopost=getpasswd&amp;id=2&amp;key=uidu4wWp`
+
+`md5(uidu4wWp,32) = c20251da46eb878f9c8d8333bac4e8e7`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203101910438.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203101914989.png)
+
+`md5(123456,32) = e10adc3949ba59abbe56e057f20f883e`
+
+## 存在前台cookie伪造漏洞
+
+[参考文章 通过DedeCMS学习php代码审计](https://www.freebuf.com/articles/web/281747.html)
+
+`include/helpers/cookie.helper.php`
+
+```php
+/**
+ *  设置Cookie记录
+ *
+ * @param     string  $key    键
+ * @param     string  $value  值
+ * @param     string  $kptime  保持时间
+ * @param     string  $pa     保存路径
+ * @return    void
+ */
+if ( ! function_exists('PutCookie'))
+{
+    function PutCookie($key, $value, $kptime=0, $pa="/")
+    {
+        global $cfg_cookie_encode,$cfg_domain_cookie;
+        setcookie($key, $value, time()+$kptime, $pa,$cfg_domain_cookie);
+        setcookie($key.'__ckMd5', substr(md5($cfg_cookie_encode.$value),0,16), time()+$kptime, $pa,$cfg_domain_cookie);
+    }
+}
+
+/**
+ *  获取Cookie记录
+ *
+ * @param     $key   键名
+ * @return    string
+ */
+if ( ! function_exists('GetCookie'))
+{
+    function GetCookie($key)
+    {
+        global $cfg_cookie_encode;
+        if( !isset($_COOKIE[$key]) || !isset($_COOKIE[$key.'__ckMd5']) )
+        {
+            return '';
+        }
+        else
+        {
+            if($_COOKIE[$key.'__ckMd5']!=substr(md5($cfg_cookie_encode.$_COOKIE[$key]),0,16))
+            {
+                return '';
+            }
+            else
+            {
+                return $_COOKIE[$key];
+            }
+        }
+    }
+}
+```
+
+`include/memberlogin.class.php`
+
+```php
+/**
+ * 网站会员登录类
+ *
+ * @package          MemberLogin
+ * @subpackage       DedeCMS.Libraries
+ * @link             http://www.dedecms.com
+ */
+class MemberLogin
+{
+    var $M_ID;
+    var $M_LoginID;
+    var $M_MbType;
+    var $M_Money;
+    var $M_Scores;
+    var $M_UserName;
+    var $M_Rank;
+    var $M_Face;
+    var $M_LoginTime;
+    var $M_KeepTime;
+    var $M_Spacesta;
+    var $fields;
+    var $isAdmin;
+    var $M_UpTime;
+    var $M_ExpTime;
+    var $M_HasDay;
+    var $M_JoinTime;
+    var $M_Honor = '';
+    var $memberCache = 'memberlogin';
+
+    //php5构造函数
+    function __construct($kptime = -1, $cache = FALSE)
+    {
+        global $dsql;
+        if ($kptime == -1) {
+            $this->M_KeepTime = 3600 * 24 * 7;
+        } else {
+            $this->M_KeepTime = $kptime;
+        }
+        $formcache = FALSE;
+        $this->M_ID = $this->GetNum(GetCookie("DedeUserID"));
+        $this->M_LoginTime = GetCookie("DedeLoginTime");
+        $this->fields = array();
+        $this->isAdmin = FALSE;
+        if (empty($this->M_ID)) {
+            $this->ResetUser();
+        } else {
+            $this->M_ID = intval($this->M_ID);
+
+...
+
+/**
+ *  验证用户是否已经登录
+ *
+ * @return    bool
+ */
+function IsLogin()
+{
+    if($this->M_ID > 0) return TRUE;
+    else return FALSE;
+}
+```
+
+`member/index.php`
+
+```php
+if($uid=='')
+{
+    $iscontrol = 'yes';
+    if(!$cfg_ml->IsLogin())
+    {
+        include_once(dirname(__FILE__)."/templets/index-notlogin.htm");
+    }
+    else
+    {
+        $minfos = $dsql->GetOne("SELECT * FROM `#@__member_tj` WHERE mid='".$cfg_ml->M_ID."'; ");
+        $minfos['totaluse'] = $cfg_ml->GetUserSpace();
+        $minfos['totaluse'] = number_format($minfos['totaluse']/1024/1024,2);
+        if($cfg_mb_max > 0) {
+            $ddsize = ceil( ($minfos['totaluse']/$cfg_mb_max) * 100 );
+        }
+        else {
+            $ddsize = 0;
+        }
+
+...
+
+else
+{
+    require_once(DEDEMEMBER.'/inc/config_space.php');
+    if($action == '')
+    {
+        ...
+
+        //更新最近访客记录及站点统计记录
+        $vtime = time();
+        $last_vtime = GetCookie('last_vtime');
+        $last_vid = GetCookie('last_vid');
+
+        ...
+
+        PutCookie('last_vtime', $vtime, 3600*24, '/');
+        PutCookie('last_vid', $last_vid, 3600*24, '/');
+```
+
+cms通过`MemberLogin::IsLogin`来判断用户登录状态,使用`MemberLogin->M_ID`这一变量进行判定
+
+`M_ID`来源于`$this->M_ID = $this->GetNum(GetCookie("DedeUserID"));`和`$this->M_ID = intval($this->M_ID);`
+
+在`GetCookie`中会对`key`与`cfg_cookie_encode`进行拼接后的哈希值跟`key_ckmd5`进行比对,`cfg_cookie_encode`是在安装cms时随机生成的,无法修改或窃取
+
+`GetCookie`后得到的`M_ID`通过`GetNum`和`intval`处理后转换为整数
+
+在正常登录流程里面,`Cookie`中的`DedeUserID`为用户在数据库中的`id`是一个数值,如果我们可以将`DedeUserID`篡改为其他用户的id,那么就可以作为其他用户登录
+
+如果我们在访问`member/index.php`添加了`uid`参数,那么cms会给我们返回对应`uid`与`cfg_cookie_encode`进行拼接后的哈希值`last_vid__ckmd5`,但这里的`uid`是用户名而非数据库中的`id`,如果传入的用户名在数据库中不存在,那么cms会返回一个值为`deleted`的`cookie`,因此不能直接利用
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203102133491.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203102134805.png)
+
+但我们前面提到`GetCookie`后得到的`M_ID`通过`GetNum`和`intval`处理后转换为整数,假设我们注册了一个用户名为`1asdf`的用户,同时数据库中存在`id`为1的用户,我们通过`last_vid__ckmd5`获取到了`1asdf`的哈希值
+
+我们将`DedeUserID`修改为`1asdf`,将`DedeUserID__ckmd5`修改为获得的`last_vid`的值,通过`function GetCookie($key)`显然是没有问题的,在返回`M_ID`时返回的是`1asdf`在经过`GetNum`和`intval`处理后被转换为了`1`,成功通过`islogin`的登录判断
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203102145174.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203102146331.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203102146012.png)
