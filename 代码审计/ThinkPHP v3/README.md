@@ -1520,7 +1520,7 @@ class IndexController extends Controller {
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203202120521.png)
 
-3. 利用`I`函数留下后面
+3. 利用`I`函数留下后门
 
 ```php
 <?php
