@@ -2506,8 +2506,50 @@ rlike
 regexp
 ```
 
+### 报错注入时concat被过滤
 
+在某一次渗透测试时,遇到了`concat`被过滤的情况,但不是单纯地过滤`concat`关键字,而是对`concat(xxx,xxx)`此种形式进行过滤
 
+- 注入点测试
 
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204041212432.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204041212207.png)
+
+- 使用`concat`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204041213952.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204041213661.png)
+
+- 使用`make_set`
+
+[https://dev.mysql.com/doc/refman/8.0/en/string-functions.html#function_make-set](https://dev.mysql.com/doc/refman/8.0/en/string-functions.html#function_make-set)
+
+`MAKE_SET(bits,str1,str2,...)`
+
+返回一个集合值(一个包含由`,`字符分隔的子字符串的字符串),该值由在`bits`中设置了相应位的字符串组成,`str1`对应位`0`,`str2`对应位`1`,依此类推,NULL值不会附加到结果中
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204011125103.png)
+
+bits将转为二进制,1的二进制为0000 0001,所以输出`a`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204011125143.png)
+
+bits将转为二进制,2的二进制为0000 0010,所以输出`b`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204011126316.png)
+
+bits将转为二进制,2的二进制为0000 0011,所以输出`a,b`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204041213575.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204041213792.png)
+
+- 使用`lpad`或`rpad`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204041213215.png)
+
+`resetPassword?mobile=13610001000'and+updatexml(1,rpad('~',30,(select version())),1)%23`
 
 ## 未完待续...
