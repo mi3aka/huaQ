@@ -11,7 +11,7 @@ __isset(),当对不可访问属性调用isset()或empty()时调用
 __unset(),当对不可访问属性调用unset()时被调用
 __sleep(),执行serialize()时,先会调用这个函数
 __wakeup(),执行unserialize()时,先会调用这个函数
-__toString(),类被当成字符串时的回应方法,有时可用于构造POP链
+__toString(),类被当成字符串时的回应方法,有时可用于构造POP链,常与file_exists()结合
 __invoke(),当脚本尝试将对象调用为函数时触发
 __set_state(),当调用var_export()导出类时,此静态方法会被调用
 static __set_state(array $properties): object
