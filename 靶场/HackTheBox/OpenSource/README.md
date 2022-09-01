@@ -4,7 +4,7 @@ nmap 扫描结果
 
 ---
 
-在`download`处可以下载到源代码,都是发现其存在`.git`文件夹
+在`download`处可以下载到源代码,发现其存在`.git`文件夹
 
 ![](https://img.mi3aka.eu.org/2022/08/5ea81d832712f5e20a0b191884eafe9c.png)
 
