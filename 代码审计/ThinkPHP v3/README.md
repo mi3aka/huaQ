@@ -272,9 +272,6 @@ function I($name,$default='',$filter=null,$datas=null) {
 }
 
 function think_filter(&$value){
-    // TODO 其他安全过滤
-
-    // 过滤查询特殊字符
     if(preg_match('/^(EXP|NEQ|GT|EGT|LT|ELT|OR|XOR|LIKE|NOTLIKE|NOT BETWEEN|NOTBETWEEN|BETWEEN|NOTIN|NOT IN|IN)$/i',$value)){
         $value .= ' ';
     }
@@ -728,9 +725,6 @@ for($i=0;$i<$count;$i++) {
 }
 
 function think_filter(&$value){
-    // TODO 其他安全过滤
-
-    // 过滤查询特殊字符
     if(preg_match('/^(EXP|NEQ|GT|EGT|LT|ELT|OR|XOR|LIKE|NOTLIKE|NOT BETWEEN|NOTBETWEEN|BETWEEN|NOTIN|NOT IN|IN)$/i',$value)){
         $value .= ' ';
     }

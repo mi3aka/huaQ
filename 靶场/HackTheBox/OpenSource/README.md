@@ -65,11 +65,6 @@ def get_file_name(unsafe_filename):
     return recursive_replace(unsafe_filename, "../", "")
 
 
-"""
-TODO: get unique filename
-"""
-
-
 def get_unique_upload_name(unsafe_filename):
     spl = unsafe_filename.rsplit("\\.", 1)
     file_name = spl[0]
